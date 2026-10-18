@@ -137,6 +137,11 @@ void Connection::connect_cb(int status)
         close(status);
         return;
     }
+    // Do not hold small block announcements behind earlier unacknowledged data.
+    if ((status = uv_tcp_nodelay(&*tcp, 1))) {
+        close(status);
+        return;
+    }
     state = State::HANDSHAKE;
     conman.perIpCounter.insert(peerAddress.ipv4);
 
@@ -229,6 +234,8 @@ int Connection::accept()
     if ((i = uv_accept((uv_stream_t*)&conman.server, tmp->to_stream_ptr())))
         return i;
     tcp = std::move(tmp);
+    if ((i = uv_tcp_nodelay(&*tcp, 1)))
+        return i;
 
     // extract ip and port
     sockaddr_storage storage;

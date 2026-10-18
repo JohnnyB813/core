@@ -372,6 +372,12 @@ void StratumServer::acceptor(EndpointAddress endpointAddress)
         std::shared_ptr<uvw::tcp_handle> client = srv.parent().resource<uvw::tcp_handle>();
 
         assert(srv.accept(*client) == 0);
+        // Mining jobs and submit results should not wait for Nagle batching.
+        if (!client->no_delay(true)) {
+            spdlog::warn("Cannot enable TCP_NODELAY for Stratum connection");
+            client->close();
+            return;
+        }
         assert(client->read() == 0);
         connections.emplace_front(std::make_shared<stratum::Connection>(client, *this));
         auto iter = connections.begin();
