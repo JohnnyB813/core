@@ -1,19 +1,23 @@
-FROM alpine:3.23.4 AS build
-RUN apk add meson libgcc musl-dev gcc g++ upx pkgconf fmt
+# syntax=docker/dockerfile:1
+FROM alpine:3.23.6 AS build
+RUN apk add --no-cache meson libgcc musl-dev gcc g++ upx pkgconf fmt
+ARG BUILD_JOBS=2
 COPY . /code
-RUN mkdir /build
 WORKDIR /code
-RUN --mount=type=cache,target=/build LDFLAGS='-static' meson setup /build/code --default-library static --buildtype=release --wipe
-WORKDIR /build/code
-RUN  --mount=type=cache,target=/build ninja
-RUN mkdir /install
-RUN --mount=type=cache,target=/build DESTDIR=/install meson install
-RUN upx /install/usr/local/bin/wart-node
+# Cache downloaded sources, not the Meson build directory: a missing cache
+# must never leave a cached setup step pointing at an empty build directory.
+RUN --mount=type=cache,id=warthog-linux-sources,target=/code/subprojects/packagecache,sharing=locked \
+    LDFLAGS='-static' meson setup /build --default-library static --buildtype=release \
+    && meson compile -C /build -j "${BUILD_JOBS}" \
+    && meson test -C /build --no-rebuild --print-errorlogs \
+    && DESTDIR=/install meson install -C /build --no-rebuild \
+    && upx /install/usr/local/bin/wart-node
 
 FROM scratch AS export-stage
-COPY --from=build install/usr/local/bin/wart-node ./wart-node-linux
-COPY --from=build install/usr/local/bin/wart-wallet ./wart-wallet-linux
+COPY --from=build /install/usr/local/bin/wart-node /wart-node-linux
+COPY --from=build /install/usr/local/bin/wart-wallet /wart-wallet-linux
 
+ENV HOME=/warthog
 VOLUME ["/warthog/.warthog"]
-ENTRYPOINT ["./wart-node-linux", "--chain-db=/warthog/.warthog/chain.db", "--peers-db=/warthog/.warthog/peers.db"]
-EXPOSE 9186 3000
+ENTRYPOINT ["/wart-node-linux", "--chain-db=/warthog/.warthog/chain.db", "--peers-db=/warthog/.warthog/peers.db"]
+EXPOSE 9186 3000 3001 3456

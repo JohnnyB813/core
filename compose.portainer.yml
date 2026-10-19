@@ -1,0 +1,24 @@
+services:
+  warthog:
+    image: ghcr.io/johnnyb813/warthog-node:dev
+    platform: linux/amd64
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    working_dir: /warthog
+    command: ["--enable-public", "--stratum=0.0.0.0:3456"]
+    ports:
+      - "9186:9186/tcp"
+      - "3001:3001/tcp"
+    volumes:
+      - warthog-data:/warthog/.warthog
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  warthog-data:

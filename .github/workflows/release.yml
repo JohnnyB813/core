@@ -1,19 +1,19 @@
 name: Release
 on:
   workflow_dispatch:
-  push:
-      branches:
-        - master
       
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
         - name: Checkout
-          uses: actions/checkout@v3
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
         - name: Set up Docker Buildx
-          uses: docker/setup-buildx-action@v1
+          uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
         - name : Meson Test
           run : DOCKER_BUILDKIT=1 docker build . --file dockerfiles/run_tests --progress plain
@@ -27,11 +27,6 @@ jobs:
         - name : Docker Build MacOS
           continue-on-error: true
           run : DOCKER_BUILDKIT=1 docker build . -f dockerfiles/build_macos --output ./build/aarch64-macos
-
-        - name: Call Docker
-          uses: peter-evans/repository-dispatch@v3
-          with:
-            event-type: docker
 
         - name: Get version
           id: get_version

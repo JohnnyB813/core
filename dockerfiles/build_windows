@@ -1,15 +1,14 @@
-FROM alpine:3.23.4 AS build
-RUN apk add meson libgcc musl-dev gcc g++ mingw-w64-gcc
+# syntax=docker/dockerfile:1
+FROM alpine:3.23.6 AS build
+RUN apk add --no-cache meson libgcc musl-dev gcc g++ mingw-w64-gcc
+ARG BUILD_JOBS=2
 COPY . /code
-RUN mkdir /build-mingw
 WORKDIR /code
-RUN --mount=type=cache,target=/build-mingw LDFLAGS='-static' meson setup /build-mingw --cross-file crosscompile/x86_64-w64-mingw32.txt  --default-library static --buildtype=release --wipe
-
-RUN --mount=type=cache,target=/build-mingw meson compile -C /build-mingw
-RUN mkdir /install
-RUN --mount=type=cache,target=/build-mingw DESTDIR=/install meson install -C /build-mingw
-
+RUN --mount=type=cache,id=warthog-windows-sources,target=/code/subprojects/packagecache,sharing=locked \
+    LDFLAGS='-static' meson setup /build-mingw --cross-file crosscompile/x86_64-w64-mingw32.txt --default-library static --buildtype=release \
+    && meson compile -C /build-mingw -j "${BUILD_JOBS}" \
+    && DESTDIR=/install meson install -C /build-mingw --no-rebuild
 
 FROM scratch AS export-stage
-COPY --from=build install/usr/local/bin/wart-node.exe ./wart-node-windows.exe
-COPY --from=build install/usr/local/bin/wart-wallet.exe ./wart-wallet-windows.exe
+COPY --from=build /install/usr/local/bin/wart-node.exe /wart-node-windows.exe
+COPY --from=build /install/usr/local/bin/wart-wallet.exe /wart-wallet-windows.exe

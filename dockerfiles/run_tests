@@ -1,8 +1,10 @@
-FROM alpine:3.23.4 AS build
-RUN apk add meson libgcc musl-dev gcc g++ upx linux-headers
+# syntax=docker/dockerfile:1
+FROM alpine:3.23.6 AS build
+RUN apk add --no-cache meson libgcc musl-dev gcc g++ pkgconf fmt
+ARG BUILD_JOBS=2
 COPY . /code
-RUN mkdir /build
 WORKDIR /code
-RUN --mount=type=cache,target=/build LDFLAGS='-static' meson setup /build/code --default-library static --buildtype=release --wipe
-WORKDIR /build/code
-RUN  --mount=type=cache,target=/build meson test -v
+RUN --mount=type=cache,id=warthog-test-sources,target=/code/subprojects/packagecache,sharing=locked \
+    LDFLAGS='-static' meson setup /build --default-library static --buildtype=release \
+    && meson compile -C /build -j "${BUILD_JOBS}" custom_float \
+    && meson test -C /build --no-rebuild --print-errorlogs

@@ -2,6 +2,8 @@
 #include "block/chain/height.hpp"
 #include "eventloop/types/conref_declaration.hpp"
 #include "general/errors.hpp"
+#include <algorithm>
+#include <vector>
 struct ChainOffender : public ChainError {
     ChainOffender(const ChainError& ce, Conref cr)
         : ChainError(ce)
@@ -23,7 +25,7 @@ struct BanList : public std::vector<ChainOffender> {
     using std::vector<ChainOffender>::vector;
     void insert_unique(ChainOffender o)
     {
-        auto iter = std::ranges::find_if(*this, [&](const ChainOffender& co) {
+        auto iter = std::find_if(begin(), end(), [&](const ChainOffender& co) {
             return co.conId == o.conId;
         });
         if (iter == end())

@@ -1,40 +1,101 @@
-name: DockerHub Push
+name: Publish container (GHCR)
 
 on:
-  repository_dispatch:
-    types: [docker]
+  push:
+    branches: [dev, master]
+    tags: ['v*', '[0-9]*.[0-9]*.[0-9]*']
+  pull_request:
+    branches: [dev, master]
   workflow_dispatch:
 
-jobs:
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Check out repository
-        uses: actions/checkout@v2
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+permissions:
+  contents: read
 
-      - name: Get version
-        id: get_version
-        run: |
-          echo "VERSION=$(grep 'version :' meson.build | cut -d "'" -f 2)" >> $GITHUB_ENV
-      -
-        name: Build and push
-        uses: docker/build-push-action@v5
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          file: ./dockerfiles/Dockerfile
-          push: true
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set image repository
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/warthog-node" >> "$GITHUB_OUTPUT"
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
           tags: |
-            zzjulien/warthog_node:latest
-            zzjulien/warthog_node:${{ env.VERSION }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+          labels: |
+            org.opencontainers.image.title=Warthog node
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build, test, and publish
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: dockerfiles/build_linux
+          platforms: linux/amd64
+          build-args: BUILD_JOBS=2
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=warthog-linux-amd64
+          cache-to: type=gha,mode=max,scope=warthog-linux-amd64
+          provenance: mode=min
+
+      - name: Published image
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        shell: bash
+        run: |
+          {
+            echo '### Published Warthog image'
+            echo
+            echo 'Tags:'
+            echo '```text'
+            printf '%s\n' "$TAGS"
+            echo '```'
+            echo
+            echo 'Pin this digest in Portainer to keep the exact tested build:'
+            echo '```text'
+            printf '%s@%s\n' "$IMAGE" "$DIGEST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

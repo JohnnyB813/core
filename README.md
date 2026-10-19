@@ -118,12 +118,61 @@ To compile from source see below or [here](https://docs.warthog.network/guides/n
 * Compile using ninja: `ninja`
 
 ### Docker build (node and wallet)
+#### Published image (Portainer / Linux x86-64)
+
+This fork publishes to `ghcr.io/johnnyb813/warthog-node`. Use `:dev` for the TCP_NODELAY development branch. Every published commit also has a `:sha-<full-commit-sha>` tag; a digest (`@sha256:...`) pins the exact image. The workflow's run summary lists both tags and the digest.
+
+Pushes to `dev` update `:dev`; pushes to `master` update `:master` and `:latest`. Version tags such as `v0.8.21` publish `:0.8.21`. Pull requests build and test without publishing. Native binary releases are manual workflows.
+
+Publishing uses GitHub Actions' built-in `GITHUB_TOKEN`; no Docker Hub account or registry secret is needed. The first GHCR package is private by default. Its owner must change the package visibility to **Public** once under GitHub profile → Packages → warthog-node → Package settings to allow anonymous Portainer pulls.
+
+In Portainer, choose **Stacks → Add stack → Web editor**, paste this Docker Standalone stack (also saved in [`compose.portainer.yml`](compose.portainer.yml)), and deploy. It publishes P2P and the public HTTP API. The private API and Stratum remain inside the Docker network; add a private network or VPN connection for solo miners.
+
+```yaml
+services:
+  warthog:
+    image: ghcr.io/johnnyb813/warthog-node:dev
+    platform: linux/amd64
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    working_dir: /warthog
+    command: ["--enable-public", "--stratum=0.0.0.0:3456"]
+    ports:
+      - "9186:9186/tcp"
+      - "3001:3001/tcp"
+    volumes:
+      - warthog-data:/warthog/.warthog
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  warthog-data:
+```
+
+Re-pull and redeploy to adopt a newer `:dev` image. Updates keep the database volume. The public host's IP address is visible to peers; run this on a VPS to avoid publishing your home IP.
+
 #### System Requirements
 * Linux
 * Docker
 
 #### Build for Linux
 * Run `DOCKER_BUILDKIT=1 docker build . -f dockerfiles/build_linux --output build` in the repo directory.
+* To build a runnable node image instead of exporting binaries, run `docker build . -f dockerfiles/build_linux -t warthog-node:dev`.
+* Builds use two compiler jobs by default. Override this with `--build-arg BUILD_JOBS=1` on memory-constrained hosts, or increase it on larger build machines.
+* The default `Dockerfile` paths are Git symlinks. On Windows checkouts without symlink support, use the explicit `-f dockerfiles/build_linux` path shown above and Docker's Linux container engine.
+
+The runtime sets `HOME=/warthog` and stores its chain and peer databases and logs in `/warthog/.warthog`. Mount a persistent volume there. This layout supports a read-only container root filesystem.
+
+Port 9186 is for P2P. Private RPC uses port 3000; the public API (3001) and Stratum (3456) require `--enable-public` and `--stratum=0.0.0.0:3456`, respectively. `EXPOSE` only documents these ports; publish the ones you need when creating the container. Keep private RPC access restricted.
+
+The Docker build context excludes Git metadata and local build artifacts. Container binaries therefore use the project version as their commit-info fallback.
+
 #### Build for Windows (cross-compilation on Linux)
 * Run `DOCKER_BUILDKIT=1 docker build . -f dockerfiles/build_windows --output ./build/windows` in the repo.
 * Windows binaries are located in `./build/windows` directory.

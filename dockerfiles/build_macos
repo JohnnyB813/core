@@ -3,21 +3,19 @@
 ARG OSXCROSS_VERSION=13.1-r0
 FROM --platform=$BUILDPLATFORM crazymax/osxcross:${OSXCROSS_VERSION}-alpine AS osxcross
 
-FROM alpine as build
-RUN apk add --no-cache clang lld musl-dev fts-dev
+FROM alpine:3.23.6 AS build
+RUN apk add --no-cache clang lld musl-dev fts-dev meson libgcc gcc g++ pkgconf
+ARG BUILD_JOBS=2
 ENV PATH="/osxcross/bin:$PATH"
-ENV LD_LIBRARY_PATH="/osxcross/lib:$LD_LIBRARY_PATH"
+ENV LD_LIBRARY_PATH="/osxcross/lib"
 COPY --from=osxcross /osxcross /osxcross
-RUN apk add meson libgcc musl-dev gcc g++ upx
 COPY . /code
-RUN mkdir /build
 WORKDIR /code
-
-RUN meson setup /build-macos --cross-file crosscompile/aarch64-macOS.txt --default-library static --buildtype=release
-RUN meson compile -C /build-macos
-RUN mkdir /install
-RUN DESTDIR=/install meson install -C /build-macos
+RUN --mount=type=cache,id=warthog-macos-sources,target=/code/subprojects/packagecache,sharing=locked \
+    meson setup /build-macos --cross-file crosscompile/aarch64-macOS.txt --default-library static --buildtype=release \
+    && meson compile -C /build-macos -j "${BUILD_JOBS}" \
+    && DESTDIR=/install meson install -C /build-macos --no-rebuild
 
 FROM scratch AS export-stage
-COPY --from=build install/usr/local/bin/wart-node ./wart-node-aarch64
-COPY --from=build install/usr/local/bin/wart-wallet ./wart-wallet-aarch64
+COPY --from=build /install/usr/local/bin/wart-node /wart-node-aarch64
+COPY --from=build /install/usr/local/bin/wart-wallet /wart-wallet-aarch64
