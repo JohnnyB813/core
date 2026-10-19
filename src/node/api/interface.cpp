@@ -130,14 +130,18 @@ struct APIHeadRequest {
     }
     void on(bool set_synced)
     {
-        synced = set_synced;
+        {
+            std::lock_guard l(m);
+            synced = set_synced;
+        }
         try_cb();
     }
 
 private:
     void on(const API::ChainHead& h)
     {
-        head = std::move(h);
+        std::lock_guard l(m);
+        head = h;
     }
     bool all_set() const { return head.has_value() && synced.has_value(); }
     void try_cb()
@@ -195,14 +199,18 @@ struct APIMiningRequest {
     }
     void on(bool set_synced)
     {
-        synced = set_synced;
+        {
+            std::lock_guard l(m);
+            synced = set_synced;
+        }
         try_cb();
     }
 
 private:
     void on(const ChainMiningTask& t)
     {
-        miningTask = std::move(t);
+        std::lock_guard l(m);
+        miningTask = t;
     }
     bool all_set() const { return miningTask.has_value() && synced.has_value(); }
     void try_cb()

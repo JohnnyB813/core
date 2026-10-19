@@ -4,6 +4,7 @@
 #include "block/header/header_impl.hpp"
 #include "general/tcp_util.hpp"
 #include "nlohmann/json.hpp"
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <list>
@@ -282,7 +283,10 @@ void Connection::handle_message(messages::MiningAuthorize&& m)
         auto addrStr { m.user.substr(0, pos) };
         auto workerStr { m.user.substr(pos + 1) };
         Address addr(addrStr);
+        if (authorized && authorized->address != addr)
+            server.unlink_authorized(authorized->address, this);
         authorized = Authorized { addr, workerStr };
+        fresh = true;
         // A cached job must follow the successful authorization reply.
         write() << OK(m.id);
         server.link_authorized(addr, this);
@@ -361,8 +365,8 @@ void StratumServer::handle_event(ShutdownEvent&&)
 
 void StratumServer::handle_event(AppendResult&& ar)
 {
-    auto p { ar.p.lock() };
-    p->on_append_result(ar.stratumId, ar.result);
+    if (auto p { ar.p.lock() })
+        p->on_append_result(ar.stratumId, ar.result);
 }
 
 void StratumServer::handle_events()
@@ -491,7 +495,8 @@ void StratumServer::link_authorized(const Address& a, stratum::Connection* c)
                 });
         }) };
     auto& ad { iter->second };
-    ad.connections.push_back(c);
+    if (std::find(ad.connections.begin(), ad.connections.end(), c) == ad.connections.end())
+        ad.connections.push_back(c);
     if (const auto* job { ad.jobs.latest() }) {
         c->send_work(job->first, job->second, ad.clean);
     }

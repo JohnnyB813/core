@@ -72,6 +72,13 @@ node_runtime = executable('wart-node', vcs_dep, [node_source_files,'./main.cpp']
   dependencies: [sqlite3_dep,libuv_dep,uvw_dep,spdlog_dep],
   install : true)
 
+mempool_replacement = executable('mempool_replacement', vcs_dep, '../test/mempool_replacement.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Mempool replacement accounting', mempool_replacement)
+
 if get_option('performance-tools')
   node_replay = executable('node_replay', vcs_dep, '../test/node_replay.cpp',
     objects: node_runtime.extract_objects(node_source_files),

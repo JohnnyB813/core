@@ -10,6 +10,7 @@ import select
 import socket
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 
 def check(condition, message):
@@ -131,6 +132,50 @@ try:
     check(other_job[1]["params"][1] == original_job[1]["params"][1],
           "Distinct-address worker received a different chain tip")
 
+    # Reauthorization must replace one registration, including when the payout
+    # address stays the same. Closing the worker must leave no dangling entries.
+    reauthorized = Worker(address, "reauthorize")
+    workers.append(reauthorized)
+    check(reauthorized.job() == original_job, "Reauthorization worker got wrong initial job")
+    reauthorized.send(5, "mining.authorize", [address + ".renamed", "x"])
+    reply = reauthorized.read()
+    check(reply.get("id") == 5 and reply.get("result") is True, "Same-address reauthorization failed")
+    check(reauthorized.job() == original_job, "Same-address reauthorization changed the template")
+    reauthorized.quiet()
+    reauthorized.close()
+    workers.remove(reauthorized)
+    reauthorized = Worker(address, "change-payout")
+    workers.append(reauthorized)
+    check(reauthorized.job() == original_job, "Payout-change worker got wrong initial job")
+    reauthorized.send(6, "mining.authorize", [other_address + ".moved", "x"])
+    reply = reauthorized.read()
+    check(reply.get("id") == 6 and reply.get("result") is True, "Payout-address change failed")
+    check(reauthorized.job() == other_job, "Payout-address change used the old template")
+    reauthorized.quiet()
+    reauthorized.close()
+    workers.remove(reauthorized)
+    anchor.quiet()
+    other.quiet()
+
+    # A result may reach the Stratum loop after its submitting socket closes.
+    for index in range(24):
+        disconnected = Worker(address, "submit-disconnect-" + str(index))
+        workers.append(disconnected)
+        disconnected_job = disconnected.job()
+        disconnected.send(7, "mining.submit", [disconnected_job[1]["params"][0],
+                                               "010203040506", "00000000", "00000000"])
+        disconnected.close()
+        workers.remove(disconnected)
+    check(rpc("chain/head") == initial_head, "Disconnected submissions changed the chain")
+
+    # Both endpoints join responses from the chain and eventloop worker threads.
+    paths = ["chain/head", "chain/mine/" + address] * 64
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for path, result in zip(paths, executor.map(rpc, paths)):
+            check(result["height"] == (0 if path == "chain/head" else 1),
+                  "Concurrent API response has wrong height")
+            check(isinstance(result["synced"], bool), "Concurrent API response lacks sync state")
+
     anchor.close()
     workers.remove(anchor)
     restarted = Worker(address, "after-last-disconnect")
@@ -149,6 +194,9 @@ try:
                       "unique_extranonce_prefixes": "pass", "template_preservation": "pass",
                       "invalid_submission_rejected": "pass", "unknown_job_rejected": "pass",
                       "distinct_address_worker": "pass", "resubscription": "pass",
+                      "same_address_reauthorization": "pass", "payout_address_change": "pass",
+                      "submit_disconnects": 24,
+                      "concurrent_head_and_mining_requests": len(paths),
                       "second_worker_job_ms": round(second_job_ms, 3),
                       "scope": "isolated genesis testnet; no valid block or mainnet relay benchmark"}))
 finally:

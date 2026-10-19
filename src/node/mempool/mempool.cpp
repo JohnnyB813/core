@@ -231,7 +231,9 @@ void Mempool::insert_tx_throw(const TransferTxExchangeMessage& pm,
             clear.push_back(iter);
             match = iter;
         }
-        const auto remaining { e.remaining() };
+        auto remaining { e.remaining() };
+        if (match)
+            remaining.add_assert((*match)->second.spend_assert());
         if (remaining < spend) {
             Funds clearSum { Funds::zero() };
             auto iterators { txs.by_fee_inc(pm.txid.accountId) };

@@ -63,7 +63,8 @@ private: // private methods
     }
     void realloc()
     {
-        body.bytes.resize(std::min(bsize, body.bytes.size() + size_t(1024ul)));
+        // Keep the small initial allocation, then grow only as data arrives.
+        body.bytes.resize(std::min(bsize, body.bytes.size() * size_t(2)));
     }
     bool finished()
     {

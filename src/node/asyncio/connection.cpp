@@ -231,10 +231,10 @@ int Connection::send_buffers()
 int Connection::accept()
 {
     int i;
-    auto tmp { std::make_shared<TCP_t>(conman.server.loop, shared_from_this()) };
-    if ((i = uv_accept((uv_stream_t*)&conman.server, tmp->to_stream_ptr())))
+    // Retain initialized handles on failure so close() can release them through libuv.
+    tcp = std::make_shared<TCP_t>(conman.server.loop, shared_from_this());
+    if ((i = uv_accept((uv_stream_t*)&conman.server, tcp->to_stream_ptr())))
         return i;
-    tcp = std::move(tmp);
     if ((i = uv_tcp_nodelay(&*tcp, 1)))
         return i;
 
@@ -282,7 +282,7 @@ int Connection::start_read()
 
 int Connection::connect(EndpointAddress a)
 {
-    auto tmp { std::make_shared<TCP_t>(conman.server.loop, shared_from_this()) };
+    tcp = std::make_shared<TCP_t>(conman.server.loop, shared_from_this());
     peerAddress = a;
     peerEndpointPort = a.port;
     struct connect_t : public uv_connect_t {
@@ -295,7 +295,7 @@ int Connection::connect(EndpointAddress a)
     auto p = new connect_t(shared_from_this());
     auto addr { a.sock_addr() };
     connection_log().info("{} connecting ", to_string());
-    if (int i = uv_tcp_connect(p, &*tmp, (const sockaddr*)&addr,
+    if (int i = uv_tcp_connect(p, &*tcp, (const sockaddr*)&addr,
             [](uv_connect_t* req, int status) {
                 auto p = static_cast<connect_t*>(req);
                 p->pin->connect_cb(status);
@@ -305,7 +305,6 @@ int Connection::connect(EndpointAddress a)
         delete p;
         return i;
     } else {
-        tcp = std::move(tmp);
         state = State::CONNECTING;
         return 0;
     }

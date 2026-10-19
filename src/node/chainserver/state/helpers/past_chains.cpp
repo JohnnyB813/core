@@ -56,7 +56,7 @@ void BlockCache::handle(ChainSchedule cs)
 void BlockCache::garbage_collect(ChainDB& db)
 {
     std::unique_lock l(mutex);
-    if (chains.size() == 0)
+    if (gcSchedule.empty())
         return;
 
     auto now = std::chrono::system_clock::now();
