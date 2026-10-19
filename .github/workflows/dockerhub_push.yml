@@ -55,6 +55,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Build local test image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: dockerfiles/build_linux
+          platforms: linux/amd64
+          build-args: BUILD_JOBS=2
+          load: true
+          tags: warthog-node:ci
+          cache-from: type=gha,scope=warthog-linux-amd64
+          provenance: false
+
+      - name: Stratum socket regression tests
+        run: python3 src/test/run_stratum_docker.py --image warthog-node:ci
+
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -63,7 +78,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build, test, and publish
+      - name: Publish tested image
+        if: github.event_name != 'pull_request'
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -71,7 +87,7 @@ jobs:
           file: dockerfiles/build_linux
           platforms: linux/amd64
           build-args: BUILD_JOBS=2
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=warthog-linux-amd64

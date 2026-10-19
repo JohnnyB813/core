@@ -248,7 +248,7 @@ void Connection::handle_message(messages::MiningSubmit&& m)
         return;
     }
     m.apply_to(extra2prefix, *b);
-    put_chain_append({ *b },
+    put_chain_append({ std::move(*b) },
         [&, p = shared_from_this(), id = m.id](const tl::expected<void, int32_t>& res) {
             server.on_append_result({ .p = p, .stratumId = id, .result { res } });
         });
@@ -256,8 +256,10 @@ void Connection::handle_message(messages::MiningSubmit&& m)
 
 void Connection::send_work(std::string jobId, const Block& block, bool clean)
 {
-    write() << MiningSetDifficulty(block)
-            << MiningNotify(jobId, block, clean || fresh);
+    auto lines { MiningSetDifficulty(block).to_string() };
+    lines += '\n';
+    lines += MiningNotify(jobId, block, clean || fresh).to_string();
+    write_line(lines);
     fresh = false;
 }
 
@@ -276,8 +278,9 @@ void Connection::handle_message(messages::MiningAuthorize&& m)
         auto workerStr { m.user.substr(pos + 1) };
         Address addr(addrStr);
         authorized = Authorized { addr, workerStr };
-        server.link_authorized(addr, this);
+        // A cached job must follow the successful authorization reply.
         write() << OK(m.id);
+        server.link_authorized(addr, this);
     } catch (Error& e) {
         write() << StratumError::BadAddress(m.id);
         shutdown();
@@ -326,7 +329,7 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
 
     // register block
     auto jobId { serialize_hex(fe.t.block.header.hash()) };
-    Block* b { ad.add_block(jobId, std::move(fe.t.block)) };
+    Block* b { ad.jobs.add(jobId, std::move(fe.t.block)) };
     if (b == nullptr)
         return;
     const auto& block { *b };
@@ -436,31 +439,11 @@ void StratumServer::push(Event e)
     async->send();
 }
 
-Block* StratumServer::AddressData::find_block(const std::string& jobId)
-{
-    auto iter { blocks.find(jobId) };
-    if (iter == blocks.end())
-        return nullptr;
-    return &iter->second;
-}
-Block* StratumServer::AddressData::add_block(const std::string& jobId, Block&& b)
-{
-    // delete old blocks when new block is available
-    if (!blocks.empty() && blocks.begin()->second.header.prevhash() != b.header.prevhash()) {
-        blocks.clear();
-    }
-
-    auto [b_iter, inserted] { blocks.try_emplace(jobId, std::move(b)) };
-    if (!inserted)
-        return nullptr;
-    return &b_iter->second;
-}
-
 std::optional<Block> StratumServer::get_block(Address a, std::string jobId)
 {
     auto iter = addressData.find(a);
     assert(iter != addressData.end());
-    if (auto b { iter->second.find_block(jobId) }; b != nullptr) {
+    if (auto b { iter->second.jobs.find(jobId) }; b != nullptr) {
         return *b;
     }
     return {};
@@ -491,7 +474,11 @@ void StratumServer::link_authorized(const Address& a, stratum::Connection* c)
                     }
                 });
         }) };
-    iter->second.connections.push_back(c);
+    auto& ad { iter->second };
+    ad.connections.push_back(c);
+    if (const auto* job { ad.jobs.latest() }) {
+        c->send_work(job->first, job->second, ad.clean);
+    }
 }
 
 void StratumServer::unlink_authorized(const Address& a, stratum::Connection* c)

@@ -1,5 +1,6 @@
 #pragma once
 #include "api/types/all.hpp"
+#include "api/stratum/job_cache.hpp"
 #include "chainserver/mining_subscription.hpp"
 #include "communication/mining_task.hpp"
 #include <list>
@@ -72,18 +73,15 @@ class StratumServer {
     struct AddressData {
         using Subscription = mining_subscription::MiningSubscription;
         bool clean { true };
+        stratum::JobCache jobs;
         std::vector<stratum::Connection*> connections;
         Subscription subscription;
         AddressData(std::function<Subscription()>);
         void clear()
         {
-            blocks.clear();
+            jobs.clear();
             clean = true;
         }
-        Block* find_block(const std::string& jobId);
-        Block* add_block(const std::string& jobId, Block&& b);
-        private:
-        std::map<std::string, Block> blocks;
     };
     struct SubscriptionFeed {
         Address address;
