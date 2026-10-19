@@ -31,7 +31,11 @@ def main():
     assert config["db"]["chain-journal"] == "wal"
     with tempfile.TemporaryDirectory(prefix="warthog-config-") as temporary:
         root = Path(temporary)
+        # The container drops DAC_OVERRIDE along with every other capability.
+        # On Linux its root UID differs from the runner owning this directory.
+        root.chmod(0o755)
         (root / "test.toml").write_text('[node]\nlatency-log="off"\nblock-peer-selection="latency"\n[db]\nchain-journal="wal"\n')
+        (root / "test.toml").chmod(0o644)
         result = invoke("--dump-config", "--config=/checks/test.toml", "--latency-log=detail", "--block-peer-selection=legacy", "--chain-db-journal=delete", mount=root)
         assert result.returncode == 0, result.stderr
         config = tomllib.loads(result.stdout)
@@ -40,6 +44,7 @@ def main():
         assert config["db"]["chain-journal"] == "delete"
         for key, section in [("latency-log", "node"), ("block-peer-selection", "node"), ("chain-journal", "db")]:
             (root / "invalid.toml").write_text(f'[{section}]\n{key}="invalid"\n')
+            (root / "invalid.toml").chmod(0o644)
             result = invoke("--test", "--config=/checks/invalid.toml", mount=root)
             assert result.returncode != 0, f"invalid TOML {key} accepted"
     for option in ("latency-log", "block-peer-selection", "chain-db-journal"):
