@@ -54,21 +54,35 @@ src= [
   './eventloop/types/chainstate.cpp',
   './eventloop/types/conndata.cpp',
   './general/tcp_util.cpp',
+  './general/latency.cpp',
   './global/globals.cpp',
   './mempool/mempool.cpp',
   './mempool/txmap.cpp',
   './mempool/subscription.cpp',
   './peerserver/ban_cache.cpp',
   './peerserver/peerserver.cpp',
-  src_sqlitecpp,
-  src_wh,
 ]
 
 include_thirdparty=[include_trezorcrypto,include_wh,include_secp256k1,include_sqlitecpp,include_usockets,include_uwebsockets,include_json,include_tomlplusplus, include_tl]
 lib_thirdparty=[libsecp256k1, libusockets]
-executable('wart-node', vcs_dep, [src,'./main.cpp'],
+node_source_files = files(src) + src_sqlitecpp + src_wh
+node_runtime = executable('wart-node', vcs_dep, [node_source_files,'./main.cpp'],
   include_directories:['./' ,include_thirdparty],
   link_with: lib_thirdparty,
   dependencies: [sqlite3_dep,libuv_dep,uvw_dep,spdlog_dep],
   install : true)
+
+if get_option('performance-tools')
+  node_replay = executable('node_replay', vcs_dep, '../test/node_replay.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty],
+    link_with: lib_thirdparty,
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+  old_sqlite_dep = subproject('sqlite3-baseline', default_options: ['warning_level=0', 'werror=false']).get_variable('sqlite3_dep')
+  executable('node_replay_old_sqlite', vcs_dep, '../test/node_replay.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty],
+    link_with: lib_thirdparty,
+    dependencies: [old_sqlite_dep, libuv_dep, uvw_dep, spdlog_dep])
+endif
 

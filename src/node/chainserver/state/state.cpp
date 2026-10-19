@@ -372,6 +372,8 @@ auto State::add_stage(const std::vector<Block>& blocks, const Headerchain& hc) -
     assert(hc.length() >= stage.length());
     assert(hc.hash_at(stage.length()) == stage.hash_at(stage.length()));
     for (auto& b : blocks) {
+        latency::Context blockContext(b.trace);
+        latency::Scope checks(latency::Phase::HeaderBody);
         assert(hc.length() >= b.height);
         assert(hc[b.height] == b.header);
 
@@ -391,6 +393,8 @@ auto State::add_stage(const std::vector<Block>& blocks, const Headerchain& hc) -
             err = { EINV_BODY, b.height };
             break;
         }
+        checks.finish();
+        latency::Scope writes(latency::Phase::DatabaseWrite);
         db.insert_protect(b);
         stage.append(prepared.value(), batchRegistry);
     }
@@ -573,6 +577,8 @@ auto State::apply_signed_snapshot(SignedSnapshot&& ssnew) -> std::optional<State
 
 auto State::append_mined_block(const Block& b) -> StateUpdate
 {
+    latency::Scope apply(latency::Phase::BlockApply);
+    latency::Scope checks(latency::Phase::HeaderBody);
     auto nextHeight { next_height() };
     if (nextHeight != b.height)
         throw Error(EMINEDDEPRECATED);
@@ -586,6 +592,7 @@ auto State::append_mined_block(const Block& b) -> StateUpdate
         throw Error(EINV_BODY);
     if (chainlength() + 1 != b.height)
         throw Error(EBADHEIGHT);
+    checks.finish();
 
     const auto nextAccountId { db.next_state_id() };
     const auto nextHistoryId { db.next_history_id() };

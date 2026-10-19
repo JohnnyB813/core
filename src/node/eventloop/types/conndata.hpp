@@ -5,6 +5,7 @@
 #include "eventloop/sync/header_download/connection_data.hpp"
 #include "eventloop/timer.hpp"
 #include "mempool/subscription_declaration.hpp"
+#include "eventloop/sync/block_download/peer_latency.hpp"
 
 class Timerref {
 public:
@@ -46,6 +47,10 @@ struct ConnectionJob : public Timerref {
         try {
             assert(!data_v.valueless_by_exception());
             data_v = req;
+            std::visit([](auto& stored) {
+                if constexpr (std::is_base_of_v<IsRequest, std::decay_t<decltype(stored)>>)
+                    stored.sentAt = latency::Clock::now();
+            }, data_v);
             assert(data_v.valueless_by_exception() == false);
         } catch (...) {
             assert(0 == 1);
@@ -111,11 +116,24 @@ struct ConnectionJob : public Timerref {
             throw Error(EUNREQUESTED);
         }
         auto out = std::get<type>(data_v);
+        out.expired = !out.isActiveRequest;
         assert(!data_v.valueless_by_exception());
-        out.unref_active_requests(activeRequests);
         if (rep.nonce != out.nonce) {
+            if constexpr (std::is_same_v<type, Blockrequest>) {
+                for (const auto& trace : out.traces)
+                    if (trace) trace->outcome = latency::Outcome::Rejected;
+                if (latency::enabled()) {
+                    latency::Record record; record.height = out.range.upper.value();
+                    if (!out.traces.empty() && out.traces.back()) record.peer = out.traces.back()->identity.peer;
+                    record.outcome = latency::Outcome::Rejected;
+                    latency::submit(std::move(record));
+                }
+            }
             throw Error(EUNREQUESTED);
         }
+        // A rejected nonce leaves the stored job active; close() releases it.
+        // Releasing the copy first would decrement activeRequests twice.
+        out.unref_active_requests(activeRequests);
         reset_notexpired<type>(t);
         return out;
     }
@@ -160,6 +178,7 @@ struct Ping : public Timerref {
         assert(!data);
         data = msg;
         timer_iter = iter;
+        sentAt = latency::Clock::now();
     }
     Timer::iterator sleep(Timer::iterator iter)
     {
@@ -182,6 +201,8 @@ struct Ping : public Timerref {
             throw e;
         return *data;
     }
+
+    latency::TimePoint sentAt {};
 
 private:
     std::optional<PingMsg> data;
@@ -227,6 +248,7 @@ struct PeerState {
     uint32_t lastNonce;
     bool verifiedEndpoint = false;
     Ping ping;
+    BlockDownload::PeerLatency latencyStats;
     Usage usage;
     friend class Eventloop;
     friend class BlockDownload::Downloader;

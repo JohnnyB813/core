@@ -1,6 +1,8 @@
 #pragma once
 
 #include "SQLiteCpp/SQLiteCpp.h"
+#include "db/journal.hpp"
+#include "general/latency.hpp"
 #include "block/block.hpp"
 #include "block/chain/offsts.hpp"
 #include "block/id.hpp"
@@ -235,7 +237,7 @@ private:
     static constexpr int64_t SIGNEDPINID = -2;
 
 public:
-    ChainDB(const std::string& path);
+    ChainDB(const std::string& path, const std::string& journal = "delete");
     [[nodiscard]] ChainDBTransaction transaction();
     void set_balance(AccountId stateId, Funds newbalance)
     {
@@ -333,6 +335,7 @@ private:
 private:
     SQLite::Database db;
     Filelock fl;
+    ChainJournal journal;
     struct CreateTables {
         CreateTables(SQLite::Database& db)
         {
@@ -429,6 +432,7 @@ class ChainDBTransaction {
 public:
     void commit()
     {
+        latency::Scope timing(latency::Phase::Commit);
         tx.commit();
         commited = true;
     }

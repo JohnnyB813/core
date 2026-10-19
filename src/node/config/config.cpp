@@ -10,6 +10,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <algorithm>
 #ifdef __APPLE__
 #include <sys/types.h>
 #include <unistd.h>
@@ -230,6 +231,8 @@ int Config::process_gengetopt(gengetopt_args_info& ai)
                             data.chaindb = fetch<std::string>(v);
                         else if (k == "peers-db")
                             data.peersdb = fetch<std::string>(v);
+                        else if (k == "chain-journal")
+                            data.chainJournal = fetch<std::string>(v);
                         else
                             warning_config(k);
                     }
@@ -276,6 +279,10 @@ int Config::process_gengetopt(gengetopt_args_info& ai)
                             peers.allowLocalhostIp = fetch<bool>(v);
                         } else if (k == "log-communication") {
                             node.logCommunication = fetch<bool>(v);
+                        } else if (k == "latency-log") {
+                            node.latencyLog = fetch<std::string>(v);
+                        } else if (k == "block-peer-selection") {
+                            node.blockPeerSelection = fetch<std::string>(v);
                         } else
                             warning_config(k);
                     }
@@ -284,6 +291,10 @@ int Config::process_gengetopt(gengetopt_args_info& ai)
                 }
             }
             if (ai.test_given) {
+                if (ai.latency_log_given) node.latencyLog = ai.latency_log_arg;
+                if (ai.block_peer_selection_given) node.blockPeerSelection = ai.block_peer_selection_arg;
+                if (ai.chain_db_journal_given) data.chainJournal = ai.chain_db_journal_arg;
+                validate_performance_options();
                 std::cout << "Configuration file \"" + filename + "\" is vaild.\n";
                 return 0;
             }
@@ -297,6 +308,11 @@ int Config::process_gengetopt(gengetopt_args_info& ai)
             return -1;
         }
     }
+
+    if (ai.latency_log_given) node.latencyLog = ai.latency_log_arg;
+    if (ai.block_peer_selection_given) node.blockPeerSelection = ai.block_peer_selection_arg;
+    if (ai.chain_db_journal_given) data.chainJournal = ai.chain_db_journal_arg;
+    validate_performance_options();
 
     // DB args
     if (ai.chain_db_given)
@@ -423,12 +439,26 @@ std::string Config::dump()
             { "disable-tx-mining", node.disableTxsMining },
             { "enable-ban", peers.enableBan },
             { "allow-localhost-ip", peers.allowLocalhostIp },
-            { "log-communication", (bool)node.logCommunication } });
+            { "log-communication", (bool)node.logCommunication },
+            { "latency-log", node.latencyLog },
+            { "block-peer-selection", node.blockPeerSelection } });
     tbl.insert_or_assign("db", toml::table {
                                    { "chain-db", data.chaindb },
                                    { "peers-db", data.peersdb },
+                                   { "chain-journal", data.chainJournal },
                                });
     stringstream ss;
     ss << tbl << endl;
     return ss.str();
+}
+
+void Config::validate_performance_options() const
+{
+    auto check = [](const std::string& value, std::initializer_list<std::string_view> allowed, std::string_view option) {
+        if (std::find(allowed.begin(), allowed.end(), value) == allowed.end())
+            throw std::runtime_error("Invalid " + std::string(option) + ": " + value);
+    };
+    check(node.latencyLog, { "off", "summary", "detail" }, "latency-log (off, summary, detail)");
+    check(node.blockPeerSelection, { "legacy", "latency" }, "block-peer-selection (legacy, latency)");
+    check(data.chainJournal, { "delete", "wal" }, "chain-db-journal (delete, wal)");
 }

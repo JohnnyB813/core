@@ -56,6 +56,7 @@ private:
 
 struct FocusNode {
     std::vector<BodyContainer> blockBodies;
+    std::vector<latency::TracePtr> traces;
     bool activeRequest() { return c.valid(); }
     void register_downloader(Conref);
     Conref conref() const { return c; };
@@ -77,7 +78,7 @@ struct Focus {
     void clear(); // precondition: reset all connections focusIter
     void erase(Conref cr);
     void set_offset(Height);
-    void set_blocks(BlockSlot, Height reqBegin, std::vector<BodyContainer>&& blocks);
+    bool set_blocks(BlockSlot, Height reqBegin, std::vector<BodyContainer>&& blocks, const std::vector<latency::TracePtr>& traces = {});
 
     struct FocusSlot {
         FocusMap::iterator iter;

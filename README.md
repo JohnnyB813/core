@@ -173,6 +173,30 @@ Port 9186 is for P2P. Private RPC uses port 3000; the public API (3001) and Stra
 
 The Docker build context excludes Git metadata and local build artifacts. Container binaries therefore use the project version as their commit-info fallback.
 
+#### Latency diagnostics and database rollback
+
+These settings accept CLI overrides, TOML configuration, and `--dump-config` output:
+
+| CLI | TOML | Values | Default |
+| --- | --- | --- | --- |
+| `--latency-log` | `[node] latency-log` | `off`, `summary`, `detail` | `off` |
+| `--block-peer-selection` | `[node] block-peer-selection` | `legacy`, `latency` | `legacy` |
+| `--chain-db-journal` | `[db] chain-journal` | `delete`, `wal` | `wal` |
+
+CLI values take precedence. Invalid values stop startup. Summary mode prints counts and p50/p95 timings every 60 seconds, separated by outcome. Detailed mode also writes `logs/latency.log` inside the data volume, with 5 MiB files and three rotations. Its asynchronous queue holds 1,024 records, discards the oldest diagnostic record on overflow, and reports losses. Diagnostics also cap live block traces at 512; skipped traces count as losses. `off` avoids allocating block traces. Peer response measurements remain available independently.
+
+WAL is enabled by default following recovery validation and operator acceptance of two 100-block replay comparisons on Samsung 870 SSD RAID1: median block application fell from 33.36/33.87 ms in DELETE mode to 12.41/12.27 ms in WAL mode. These are partial storage results, not completion of the five-run promotion protocol. Diagnostics and latency peer selection remain opt-in because their full performance gates have not completed.
+
+Detailed durations use monotonic microseconds. Summary percentiles are rounded up to 1 ms, with an overflow bucket at 2 seconds. Nested spans overlap: do not add block application, validation, database writes, and commit times. Commit includes automatic checkpoint work. Stage records carry the target height and hash; block records also carry a trace ID and peer. Acceptance-to-announcement and acceptance-to-miner-write measurements describe local queueing. Receiving test clients are needed to measure remote delivery. A block is counted once across subscribed miners; first and last miner queueing milestones are separate.
+
+Latency peer selection applies only to eligible, idle peers serving a single-block request. Valid block turnaround takes priority over ping, with bounded freshness and periodic exploration. Bulk download scheduling and wire messages are unchanged. Use `--block-peer-selection=legacy` to restore the previous selection order.
+
+The chain database uses bundled SQLite 3.54.1. Both journal modes explicitly use `synchronous=FULL`, foreign keys, and SQLite's 1,000-page automatic checkpoint threshold. The peer database keeps its existing journal mode. Persistent databases must enter the requested mode; temporary databases use their supported journal mode. See the [SQLite WAL documentation](https://www.sqlite.org/wal.html) and [3.54.1 release notes](https://www.sqlite.org/releaselog/3_54_1.html).
+
+To roll back WAL, stop the node cleanly and restart with `--chain-db-journal=delete`. SQLite checkpoints committed WAL contents and converts the database. **Never manually delete `chain.db-wal` or `chain.db-shm`.** For backups, either use SQLite's backup API or cleanly stop the node and copy the database together with any sidecars before restarting. Copying only a live `chain.db` can omit committed WAL contents. Keep the same Portainer volume and read-only root filesystem.
+
+Performance tools are optional (`meson setup ... -Dperformance-tools=true`). `src/test/run_latency_benchmarks.py` replays at least 100 recorded blocks in five rotated runs on protected database copies. It compares old/new SQLite, instrumentation, DELETE/WAL, peer selection, and the combined candidate. A disposable directory must contain an ownership marker; source databases remain read-only. Performance gates control default promotion. Native tests, offline mainnet replay, P2P rejection tests, Stratum socket tests, and recovery tests run before GHCR publication. The small CI fixture predates the mainnet checkpoint and mining format, so current-height valid-block relay and miner delivery are tested separately on the benchmark copy. Process termination and injected I/O errors do not simulate a physical power loss.
+
 #### Build for Windows (cross-compilation on Linux)
 * Run `DOCKER_BUILDKIT=1 docker build . -f dockerfiles/build_windows --output ./build/windows` in the repo.
 * Windows binaries are located in `./build/windows` directory.

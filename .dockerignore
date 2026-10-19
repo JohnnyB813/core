@@ -16,3 +16,8 @@ outputs
 work
 doc/docs
 subprojects/packagecache
+subprojects/*
+!subprojects/*.wrap
+!subprojects/packagefiles/
+!subprojects/packagefiles/**
+**/__pycache__

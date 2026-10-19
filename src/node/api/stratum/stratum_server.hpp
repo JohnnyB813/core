@@ -48,9 +48,9 @@ private:
     void handle_message(messages::MiningSubscribe&& s);
     void handle_message(messages::MiningSubmit&& m);
     void handle_message(messages::MiningAuthorize&& m);
-    void send_work(std::string jobId, const Block& block, bool clean);
+    bool send_work(std::string jobId, const Block& block, bool clean);
     void shutdown();
-    void write_line(const std::string& line);
+    bool write_line(const std::string& line);
     void process_line();
     Writer write() { return { *this }; }
 
@@ -62,6 +62,7 @@ private:
     const std::array<uint8_t,4> extra2prefix;
     std::optional<Authorized> authorized;
     std::string stratumLine;
+    latency::TimePoint messageReceivedAt {};
     std::shared_ptr<uvw::tcp_handle> handle;
     StratumServer& server;
 };

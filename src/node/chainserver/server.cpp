@@ -43,6 +43,7 @@ ChainServer::~ChainServer()
 
 void ChainServer::api_mining_append(Block&& block, ResultCb callback)
 {
+    if (!block.trace) block.trace = latency::make_trace(block.height.value(), block.header.hash());
     defer_maybe_busy(MiningAppend { std::move(block), std::move(callback) });
 }
 
@@ -188,7 +189,10 @@ void ChainServer::workerfun()
         haswork = false;
         if (closing)
             break;
-        state.garbage_collect();
+        {
+            latency::Scope gc(latency::Phase::GarbageCollection);
+            state.garbage_collect();
+        }
 
         { // work
             decltype(events) tmpq;
@@ -198,10 +202,19 @@ void ChainServer::workerfun()
             }
             timing = timing_log().session();
             while (!tmpq.empty()) {
+                auto queuedAt = tmpq.front().queuedAt;
                 std::visit([&](auto&& e) {
+                    if (queuedAt != latency::TimePoint {}) {
+                        auto us = latency::microseconds(queuedAt, latency::Clock::now());
+                        if constexpr (std::is_same_v<std::decay_t<decltype(e)>, MiningAppend>) {
+                            if (e.block.trace) e.block.trace->add(latency::Phase::ChainQueue, us);
+                        } else if constexpr (std::is_same_v<std::decay_t<decltype(e)>, stage_operation::StageAddOperation>) {
+                            for (auto& b : e.blocks) if (b.trace) b.trace->add(latency::Phase::ChainQueue, us);
+                        } else latency::sample(latency::Phase::ChainQueue, us);
+                    }
                     handle_event(std::move(e));
                 },
-                    tmpq.front());
+                    tmpq.front().event);
                 tmpq.pop();
             }
             timing.reset();
@@ -212,7 +225,12 @@ void ChainServer::workerfun()
 void ChainServer::dispatch_mining_subscriptions()
 {
     miningSubscriptions.dispatch([&](const Address& a) {
-        return state.mining_task(a);
+        latency::Scope taskTimer(latency::Phase::MiningTemplate);
+        auto task = state.mining_task(a);
+        if (task) {
+            task->parentTrace = latency::current;
+        }
+        return task;
     });
 }
 
@@ -225,14 +243,19 @@ TxHash ChainServer::append_gentx(const PaymentCreateMessage& m)
 
 void ChainServer::handle_event(MiningAppend&& e)
 {
+    latency::Context context(e.block.trace);
     auto t { timing->time("MiningAppend") };
     try {
         auto res = state.append_mined_block(e.block);
+        if (e.block.trace) e.block.trace->accept();
+        res.trace = e.block.trace;
         global().pel->async_state_update(std::move(res));
         spdlog::info("Accepted new block #{}", state.chainlength().value());
         e.callback({});
         dispatch_mining_subscriptions();
     } catch (Error err) {
+        if (e.block.trace) e.block.trace->outcome = err.e == EMINEDDEPRECATED
+            ? latency::Outcome::Stale : latency::Outcome::Rejected;
         spdlog::info("Rejected new block #{}: {}", (state.chainlength() + 1).value(),
             err.strerror());
         e.callback(tl::make_unexpected(err.e));
@@ -371,15 +394,52 @@ void ChainServer::handle_event(GetBlocks&& e)
 
 void ChainServer::handle_event(stage_operation::StageSetOperation&& r)
 {
+    latency::Record diagnostic;
+    const auto began = latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
+    if (began != latency::TimePoint {}) {
+        diagnostic.height = r.headers.length().value();
+        if (diagnostic.height) diagnostic.hash = r.headers.hash_at(r.headers.length().nonzero_assert());
+    }
     auto t { timing->time("StageSet") };
     global().pel->async_stage_action(state.set_stage(std::move(r.headers)));
+    if (began != latency::TimePoint {}) {
+        diagnostic.present = uint64_t(1) << size_t(latency::Phase::StageSet);
+        diagnostic.us[size_t(latency::Phase::StageSet)] = latency::microseconds(began, latency::Clock::now());
+        latency::submit(std::move(diagnostic));
+    }
 }
 
 void ChainServer::handle_event(stage_operation::StageAddOperation&& r)
 {
+    std::vector<latency::TracePtr> traces;
+    std::vector<bool> alreadyCanonical;
+    if (latency::enabled()) for (const auto& b : r.blocks) {
+        traces.push_back(b.trace);
+        auto canonical = state.get_hash(b.height);
+        alreadyCanonical.push_back(canonical && *canonical == b.header.hash());
+    }
+    latency::Group group(traces);
+    latency::Context context(r.blocks.empty() ? latency::TracePtr {} : r.blocks.back().trace);
     auto t { timing->time("StageAdd") };
+    latency::Scope application(latency::Phase::StageApply);
     auto [stageAddResult, delta] { state.add_stage(r.blocks, r.headers) };
+    application.finish();
+    latency::TracePtr tipTrace;
+    size_t blockIndex = 0;
+    for (const auto& b : r.blocks) {
+        const auto wasCanonical = !alreadyCanonical.empty() && alreadyCanonical[blockIndex++];
+        if (!b.trace) continue;
+        auto canonical = state.get_hash(b.height);
+        if (wasCanonical) b.trace->outcome = latency::Outcome::Stale;
+        else if (canonical && *canonical == b.header.hash()) {
+            b.trace->accept();
+            if (b.height == state.chainlength()) tipTrace = b.trace;
+        } else b.trace->outcome = stageAddResult.ce && stageAddResult.ce.height() <= b.height
+            ? latency::Outcome::Rejected : latency::Outcome::Staged;
+    }
+    latency::Context publication(tipTrace);
     if (delta) {
+        delta->trace = tipTrace;
         global().pel->async_state_update(std::move(*delta));
         dispatch_mining_subscriptions();
     }

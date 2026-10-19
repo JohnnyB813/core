@@ -28,3 +28,58 @@ logging in and publishing. The publish build reuses the tested build layers.
 
 These tests use an isolated genesis testnet. They do not measure valid found-block
 propagation, mainnet synchronization, or orphan rates.
+
+# Latency and durable SQLite tests
+
+The Meson suite also checks the bounded diagnostic queue, monotonic metadata,
+nested timings, miner deduplication, peer EWMA/ranking/exploration, journal
+conversion, temporary databases, and 360 SQLite write/sync recovery cases,
+including forced checkpoint/reset faults and explicitly counted no-fault controls. Assertions
+used for test expectations remain active in release builds.
+
+```sh
+docker build . -f dockerfiles/build_linux --target test-runtime -t warthog-latency-tests:ci
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp warthog-latency-tests:ci
+python3 src/test/config_runtime.py --image warthog-node:stratum-candidate
+```
+
+The offline runtime replays 100 genuine public mainnet blocks, checks both peer
+policies' handshakes, validated pings and unsolicited-reply rejection, then runs
+100 valid local block submissions through HTTP with receiving P2P clients and a
+separately recorded stale duplicate. It also runs
+40 SIGKILL recovery cases and 28 real chain/state/history recovery cases with
+process termination or injected write/sync errors. Recovered chains must retain
+acknowledged commits, pass integrity checks, resume through consensus validation,
+and match the uninterrupted logical digest. These are not physical power-cut
+tests. The historical fixture predates the mainnet checkpoint and current mining
+format; the tests do not bypass either rule to manufacture peer or mining success.
+
+Current-height peer and miner tests require a matching database copy and recorded
+blocks. The fixture is JSON with `base_height` and `blocks`, where each block is
+`[height, header_hex, body_hex]`. Mount the protected base and fixture read-only,
+and separate empty volumes at `/trial` and `/results`. Use the test-runtime image:
+
+```sh
+python3 /checks/run_latency_benchmarks.py --base=/base --fixture=/fixture/current-blocks.json --trial=/trial --results=/results --runs=5
+```
+
+The runner marks its disposable trial directory, checks ownership before resetting
+it, and never resets the source. Each comparison starts from the same base. It
+rotates case order across five runs, verifies old/new SQLite linkage and logical
+equivalence, records 100-block timings, and runs 2,000-transaction workloads across
+checkpoint boundaries. Loopback replay peers have equal fast pings and unequal
+20/80 ms block responses. Tests verify genuine block acceptance, receiving peers'
+announcements, two miners' fresh jobs, bulk scheduling, and invalid nonce/body
+rejection. Public/private RPC, P2P and Stratum wire formats are unchanged.
+
+`promotion.json` records all performance gates. A failed performance gate retains
+the previous default; any correctness/recovery error stops validation. Do not push
+the publishing branch until the current-height RAID tests and local suites pass.
+The GHCR workflow repeats the native, configuration, Stratum and offline recovery
+suites before registry login and publication.
+
+Current defaults are WAL, diagnostics off, and legacy peer selection. The operator
+accepted WAL after two consistent 100-block RAID comparisons and recovery checks,
+and stopped further storage repeats. The complete five-run performance protocol
+remains available; its unfinished instrumentation and peer-selection gates are not
+reported as passed.

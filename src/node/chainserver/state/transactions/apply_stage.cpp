@@ -23,6 +23,8 @@ ApplyStageTransaction::ApplyStageTransaction(const State& s, ChainDBTransaction&
     chainserver::BlockApplier ba { ccs.db, ccs.stage, baseTxIds, true };
     std::vector<API::Block> apiBlocks;
     for (NonzeroHeight h = (chainlength + 1).nonzero_assert(); h <= ccs.stage.length(); ++h) {
+        latency::Context context(latency::for_height(h.value()));
+        latency::Scope apply(latency::Phase::BlockApply);
         auto historyId { ccs.db.next_history_id() };
         AccountId accountId { ccs.db.next_state_id() };
         auto hash { ccs.stage.hash_at(h) };

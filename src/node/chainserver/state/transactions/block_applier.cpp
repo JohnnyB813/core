@@ -223,6 +223,7 @@ struct Preparation {
 
 Preparation BlockApplier::Preparer::prepare(const BodyView& bv, const NonzeroHeight height) const
 {
+    latency::Scope validation(latency::Phase::TransactionValidation);
     if (!bv.valid())
         throw Error(EINV_BODY);
     // Things to do in this function
@@ -341,6 +342,7 @@ Preparation BlockApplier::Preparer::prepare(const BodyView& bv, const NonzeroHei
 API::Block BlockApplier::apply_block(const BodyView& bv, HeaderView hv, NonzeroHeight height, BlockId blockId)
 {
     auto prepared { preparer.prepare(bv, height) }; // call const function
+    latency::Scope writes(latency::Phase::DatabaseWrite);
 
     // ABOVE NO DB MODIFICATIONS
     //////////////////////////////

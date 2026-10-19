@@ -58,7 +58,7 @@ bool Eventloop::defer(Event e)
     if (closeReason)
         return false;
     haswork = true;
-    events.push(std::move(e));
+    events.emplace(std::move(e));
     cv.notify_one();
     return true;
 }
@@ -87,6 +87,7 @@ void Eventloop::async_erase(std::shared_ptr<Connection> c, int32_t error)
 
 void Eventloop::async_state_update(StateUpdate&& s)
 {
+    s.queuedAt = latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
     defer(std::move(s));
 }
 
@@ -169,10 +170,12 @@ void Eventloop::work()
             data);
     }
     while (!tmp.empty()) {
+        if (tmp.front().queuedAt != latency::TimePoint {})
+            latency::sample(latency::Phase::EventQueue, latency::microseconds(tmp.front().queuedAt, latency::Clock::now()));
         std::visit([&](auto&& e) {
             handle_event(std::move(e));
         },
-            tmp.front());
+            tmp.front().event);
         tmp.pop();
     }
     connections.garbage_collect();
@@ -214,6 +217,10 @@ void Eventloop::handle_event(OnProcessConnection&& m)
 
 void Eventloop::handle_event(StateUpdate&& e)
 {
+    latency::Context context(e.trace);
+    if (e.trace && e.queuedAt != latency::TimePoint {})
+        e.trace->add(latency::Phase::StateQueue, latency::microseconds(e.queuedAt, latency::Clock::now()));
+    latency::Scope publication(latency::Phase::StatePublication);
     // mempool
     mempool.apply_log(std::move(e.mempoolUpdate));
 
@@ -236,6 +243,7 @@ void Eventloop::update_chain(Append&& m)
             close(c, e);
         }
         c.send(msg);
+        if (latency::current) latency::current->milestone(latency::Phase::PeerAnnouncementQueued);
     }
     //  broadcast new snapshot
     for (auto c : connections.initialized())
@@ -254,6 +262,7 @@ void Eventloop::update_chain(Fork&& fork)
             if (c.initialized())
                 c->chain.on_consensus_fork(msg.forkHeight, chains);
             c.send(msg);
+            if (latency::current) latency::current->milestone(latency::Phase::PeerAnnouncementQueued);
         } catch (ChainError e) {
             close(c, e);
         }
@@ -701,8 +710,15 @@ void Eventloop::on_request_expired(Conref cr, const Batchrequest& req)
     do_requests();
 }
 
-void Eventloop::on_request_expired(Conref cr, const Blockrequest&)
+void Eventloop::on_request_expired(Conref cr, const Blockrequest& request)
 {
+    if (latency::enabled()) {
+        latency::Record record; record.peer = cr.id(); record.height = request.range.upper.value();
+        record.outcome = latency::Outcome::TimedOut;
+        latency::submit(std::move(record));
+    }
+    for (const auto& trace : request.traces)
+        if (trace) trace->outcome = latency::Outcome::TimedOut;
     blockDownload.on_blockreq_expire(cr);
     do_requests();
 }
@@ -719,6 +735,8 @@ void Eventloop::handle_timeout(Timer::Connect&&)
 
 void Eventloop::dispatch_message(Conref cr, Rcvbuffer& msg)
 {
+    receivedAt = msg.completedAt;
+    dispatchedAt = latency::Clock::now();
     using namespace messages;
     if (msg.verify() == false)
         throw Error(ECHECKSUM);
@@ -808,6 +826,8 @@ void Eventloop::handle_msg(Conref cr, PongMsg&& m)
     if (config().node.logCommunication)
         spdlog::info("{} handle pong", cr.str());
     auto& pingMsg = cr.ping().check(m);
+    if (receivedAt >= cr.ping().sentAt)
+        cr->latencyStats.ping.add(latency::microseconds(cr.ping().sentAt, receivedAt), receivedAt);
     received_pong_sleep_ping(cr);
     spdlog::debug("{} Received {} addresses", cr.str(), m.addresses.size());
     connections.queue_verification(m.addresses);
@@ -919,10 +939,39 @@ void Eventloop::handle_msg(Conref cr, BlockrepMsg&& m)
         spdlog::info("{} handle blockrep", cr.str());
     auto req = cr.job().pop_req(m, timer, activeRequests);
 
+    for (const auto& trace : req.traces) {
+        if (!trace) continue;
+        trace->receivedNs.store(std::chrono::duration_cast<std::chrono::nanoseconds>(receivedAt.time_since_epoch()).count());
+        trace->add(latency::Phase::Request, latency::microseconds(req.sentAt, receivedAt));
+        trace->add(latency::Phase::ReceiveQueue, latency::microseconds(receivedAt, dispatchedAt));
+    }
+    auto checksBegan = latency::Clock::now();
     try {
-        blockDownload.on_blockreq_reply(cr, std::move(m), req);
+        bool accepted = blockDownload.on_blockreq_reply(cr, std::move(m), req);
+        auto checksEnded = latency::Clock::now();
+        for (const auto& trace : req.traces) {
+            if (!trace) continue;
+            trace->add(latency::Phase::DownloadChecks, latency::microseconds(checksBegan, checksEnded));
+            trace->outcome = accepted ? latency::Outcome::Staged : latency::Outcome::Stale;
+        }
+        cr->latencyStats.observe_block(accepted, req.expired, req.range.length(), req.sentAt, receivedAt);
+        if (latency::enabled() && !req.expired) {
+            latency::Record record; record.peer = cr.id(); record.height = req.range.upper.value();
+            record.outcome = accepted ? latency::Outcome::Accepted : latency::Outcome::Stale;
+            latency::submit(std::move(record));
+        }
         process_blockdownload_stage();
     } catch (Error e) {
+        for (const auto& trace : req.traces) {
+            if (!trace) continue;
+            trace->add(latency::Phase::DownloadChecks, latency::microseconds(checksBegan, latency::Clock::now()));
+            trace->outcome = latency::Outcome::Rejected;
+        }
+        if (latency::enabled()) {
+            latency::Record record; record.peer = cr.id(); record.height = req.range.upper.value();
+            record.outcome = latency::Outcome::Rejected;
+            latency::submit(std::move(record));
+        }
         close(cr, e);
     }
     do_requests();

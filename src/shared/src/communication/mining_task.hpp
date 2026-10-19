@@ -4,4 +4,6 @@
 
 struct ChainMiningTask {
     Block block;
+    latency::TracePtr parentTrace {};
+    latency::TimePoint queuedAt {};
 };

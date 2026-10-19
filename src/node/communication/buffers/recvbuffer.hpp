@@ -5,12 +5,14 @@
 #include "general/reader.hpp"
 #include <cstdint>
 #include <cstring>
+#include "general/latency.hpp"
 
 class Rcvbuffer {
     friend class Connection;
     friend class Reader;
 
 public:
+    latency::TimePoint completedAt {};
     operator Reader()
     {
         return Reader(body.msg());
@@ -28,6 +30,7 @@ public:
         memcpy(header, buf.header, sizeof(header));
         body = std::move(buf.body);
         pos = buf.pos;
+        completedAt = buf.completedAt;
         buf.pos = 0;
     }
     messages::Msg parse();

@@ -209,11 +209,13 @@ Connection::Connection(std::shared_ptr<uvw::tcp_handle> newHandle, StratumServer
 }
 void Connection::on_message(std::string_view msg)
 {
+    const auto arrived = latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
     size_t lower = 0;
     for (size_t i = 0; i < msg.size(); ++i) {
         if (msg[i] == '\n') {
             stratumLine += msg.substr(lower, i - lower);
             lower = i + 1;
+            messageReceivedAt = arrived;
             process_line();
         }
     }
@@ -248,19 +250,22 @@ void Connection::handle_message(messages::MiningSubmit&& m)
         return;
     }
     m.apply_to(extra2prefix, *b);
+    b->trace = latency::make_trace(b->height.value(), b->header.hash());
+    if (b->trace) b->trace->createdAt = messageReceivedAt;
     put_chain_append({ std::move(*b) },
         [&, p = shared_from_this(), id = m.id](const tl::expected<void, int32_t>& res) {
             server.on_append_result({ .p = p, .stratumId = id, .result { res } });
         });
 }
 
-void Connection::send_work(std::string jobId, const Block& block, bool clean)
+bool Connection::send_work(std::string jobId, const Block& block, bool clean)
 {
     auto lines { MiningSetDifficulty(block).to_string() };
     lines += '\n';
     lines += MiningNotify(jobId, block, clean || fresh).to_string();
-    write_line(lines);
+    const bool queued = write_line(lines);
     fresh = false;
+    return queued;
 }
 
 Connection::~Connection()
@@ -294,14 +299,17 @@ void Connection::shutdown()
     handle->shutdown();
 }
 
-void Connection::write_line(const std::string& line)
+bool Connection::write_line(const std::string& line)
 {
     const size_t n { line.size() + 1 };
     auto p { std::make_unique<char[]>(n) };
     memcpy(p.get(), line.data(), line.size());
     p.get()[n - 1] = '\n';
-    if (!handle->closing())
+    if (!handle->closing()) {
         handle->write(std::move(p), n);
+        return true;
+    }
+    return false;
 }
 
 void Connection::process_line()
@@ -322,6 +330,8 @@ StratumServer::AddressData::AddressData(std::function<Subscription()> generator)
 
 void StratumServer::handle_event(SubscriptionFeed&& fe)
 {
+    if (fe.t.parentTrace && fe.t.queuedAt != latency::TimePoint {})
+        fe.t.parentTrace->observe_once(latency::Phase::StratumQueue, latency::microseconds(fe.t.queuedAt, latency::Clock::now()));
     auto iter = addressData.find(fe.address);
     if (iter == addressData.end())
         return;
@@ -336,7 +346,11 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
 
     // dispatch block
     for (auto* c : ad.connections) {
-        c->send_work(jobId, block, ad.clean);
+        const bool queued = c->send_work(jobId, block, ad.clean);
+        if (queued && fe.t.parentTrace) {
+            fe.t.parentTrace->milestone(latency::Phase::MinerWriteQueued);
+            fe.t.parentTrace->latest_milestone(latency::Phase::MinerLastWriteQueued);
+        }
     }
 }
 
@@ -435,6 +449,8 @@ StratumServer::~StratumServer()
 void StratumServer::push(Event e)
 {
     std::lock_guard l(m);
+    if (auto* feed = std::get_if<SubscriptionFeed>(&e); feed && latency::enabled())
+        feed->t.queuedAt = latency::Clock::now();
     events.push_back(std::move(e));
     async->send();
 }

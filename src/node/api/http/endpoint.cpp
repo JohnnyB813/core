@@ -4,6 +4,8 @@
 #include "api/types/all.hpp"
 #include "chainserver/transaction_ids.hpp"
 #include "communication/mining_task.hpp"
+#include "block/header/header_impl.hpp"
+#include <type_traits>
 #include "general/hex.hpp"
 #include "json.hpp"
 #include "spdlog/spdlog.h"
@@ -317,10 +319,17 @@ void HTTPEndpoint::post(std::string pattern, auto parser, auto asyncfun, bool pr
             pendingRequests.insert(res);
             res->onData(
                 [this, asyncfun = std::move(asyncfun), parser = std::move(parser), res, body = std::move(body)](std::string_view data, bool last) mutable {
+                    constexpr bool mining = std::is_same_v<decltype(parser(body)), ChainMiningTask>;
+                    const auto arrived = last && mining && latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
                     body.insert(body.end(), data.begin(), data.end());
                     if (last) {
                         try {
-                            asyncfun(parser(body),
+                            auto parsed = parser(body);
+                            if constexpr (mining) {
+                                parsed.block.trace = latency::make_trace(parsed.block.height.value(), parsed.block.header.hash());
+                                if (parsed.block.trace) parsed.block.trace->createdAt = arrived;
+                            }
+                            asyncfun(std::move(parsed),
                                 [this, res](auto& data) {
                                     async_reply(res, jsonmsg::serialize(data));
                                 });

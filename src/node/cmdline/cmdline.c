@@ -34,36 +34,39 @@ const char *gengetopt_args_info_versiontext = "";
 const char *gengetopt_args_info_description = "";
 
 const char *gengetopt_args_info_detailed_help[] = {
-  "  -h, --help                 Print help and exit",
-  "      --detailed-help        Print help, including all details and hidden\n                               options, and exit",
-  "  -V, --version              Print version and exit",
+  "  -h, --help                    Print help and exit",
+  "      --detailed-help           Print help, including all details and hidden\n                                  options, and exit",
+  "  -V, --version                 Print version and exit",
   "\nNode options:",
-  "  -b, --bind=IP:PORT         Socket to listen on, defaults to \"0.0.0.0:9186\"\n                               for main net and \"0.0.0.0:9286\" for test net",
-  "  -C, --connect=IP:PORT,...  Specify peer list",
+  "  -b, --bind=IP:PORT            Socket to listen on, defaults to\n                                  \"0.0.0.0:9186\" for main net and\n                                  \"0.0.0.0:9286\" for test net",
+  "  -C, --connect=IP:PORT,...     Specify peer list",
   "  This option overrides the peers list, specify comma separated entries of\n  format 'IP:PORT'",
-  "      --isolated             Do not allow peers (for testing purposes, do not\n                               use in production)",
+  "      --isolated                Do not allow peers (for testing purposes, do\n                                  not use in production)",
   "  This option isolates the node such that it does not connect to other peers\n  and does not accept incoming connections from other peers. This option is for\n  debugging and testing purposes only, do not use in production, mined blocks\n  will not be included in main net",
-  "      --temporary            Use temporary database (for testing purposes, do\n                               not use in production)",
+  "      --temporary               Use temporary database (for testing purposes,\n                                  do not use in production)",
   "  This option starts the node with a temporary empty chain database.",
-  "      --testnet              Enable testnet",
-  "      --disable-tx-mining    Don't mine transactions (in case of bugs)",
-  "      --minfee=STRING        Set minimal transaction fee accepted by this node,\n                               defaults to 0.01",
+  "      --testnet                 Enable testnet",
+  "      --disable-tx-mining       Don't mine transactions (in case of bugs)",
+  "      --minfee=STRING           Set minimal transaction fee accepted by this\n                                  node, defaults to 0.01",
+  "      --block-peer-selection=STRING\n                                Single-block peer scheduling: legacy or latency",
   "\nData file options:",
-  "      --chain-db=STRING      specify chain data file",
+  "      --chain-db=STRING         specify chain data file",
   "  Defaults to ~/.warthog/chain.db3 in Linux, %LOCALAPPDATA%/Warthog/chain.db3\n  on Windows.'",
-  "      --peers-db=STRING      specify data file",
+  "      --peers-db=STRING         specify data file",
   "  Defaults to ~/.warthog/peers.db3 in Linux, %LOCALAPPDATA%/Warthog/peers.db3\n  on Windows",
   "\nLogging options:",
-  "  -d, --debug                Enable debug messages",
+  "      --chain-db-journal=STRING Chain database journal: delete or wal (FULL\n                                  durability)",
+  "  -d, --debug                   Enable debug messages",
+  "      --latency-log=STRING      Latency diagnostics: off, summary, or detail",
   "\nJSON RPC endpoint options:",
-  "  -r, --rpc=IP:PORT          JSON RPC endpoint socket, defaults to\n                               \"127.0.0.1:3000\" for main net and\n                               \"127.0.0.1:3100\" for test net",
-  "      --publicrpc=IP:PORT    Public JSON RPC endpoint socket, disabled by\n                               default",
-  "      --stratum=IP:PORT      Solo mining stratum",
-  "      --enable-public        Shorthand for --publicrpc=0.0.0.0:3001",
+  "  -r, --rpc=IP:PORT             JSON RPC endpoint socket, defaults to\n                                  \"127.0.0.1:3000\" for main net and\n                                  \"127.0.0.1:3100\" for test net",
+  "      --publicrpc=IP:PORT       Public JSON RPC endpoint socket, disabled by\n                                  default",
+  "      --stratum=IP:PORT         Solo mining stratum",
+  "      --enable-public           Shorthand for --publicrpc=0.0.0.0:3001",
   "\nConfiguration file options:",
-  "  -c, --config=FILENAME      Configuration file, default is \"config.toml\", in\n                               testnet \"testnet3_chain.db3\"",
-  "  -t, --test                 test the configuration file (check for correct\n                               syntax)",
-  "      --dump-config          dump the current configuration to stdout",
+  "  -c, --config=FILENAME         Configuration file, default is \"config.toml\",\n                                  in testnet \"testnet3_chain.db3\"",
+  "  -t, --test                    test the configuration file (check for correct\n                                  syntax)",
+  "      --dump-config             dump the current configuration to stdout",
   "  This option can be useful to generate a configuration file template",
     0
 };
@@ -84,8 +87,8 @@ init_help_array(void)
   gengetopt_args_info_help[10] = gengetopt_args_info_detailed_help[13];
   gengetopt_args_info_help[11] = gengetopt_args_info_detailed_help[14];
   gengetopt_args_info_help[12] = gengetopt_args_info_detailed_help[15];
-  gengetopt_args_info_help[13] = gengetopt_args_info_detailed_help[17];
-  gengetopt_args_info_help[14] = gengetopt_args_info_detailed_help[19];
+  gengetopt_args_info_help[13] = gengetopt_args_info_detailed_help[16];
+  gengetopt_args_info_help[14] = gengetopt_args_info_detailed_help[18];
   gengetopt_args_info_help[15] = gengetopt_args_info_detailed_help[20];
   gengetopt_args_info_help[16] = gengetopt_args_info_detailed_help[21];
   gengetopt_args_info_help[17] = gengetopt_args_info_detailed_help[22];
@@ -96,11 +99,14 @@ init_help_array(void)
   gengetopt_args_info_help[22] = gengetopt_args_info_detailed_help[27];
   gengetopt_args_info_help[23] = gengetopt_args_info_detailed_help[28];
   gengetopt_args_info_help[24] = gengetopt_args_info_detailed_help[29];
-  gengetopt_args_info_help[25] = 0; 
+  gengetopt_args_info_help[25] = gengetopt_args_info_detailed_help[30];
+  gengetopt_args_info_help[26] = gengetopt_args_info_detailed_help[31];
+  gengetopt_args_info_help[27] = gengetopt_args_info_detailed_help[32];
+  gengetopt_args_info_help[28] = 0;
   
 }
 
-const char *gengetopt_args_info_help[26];
+const char *gengetopt_args_info_help[29];
 
 typedef enum {ARG_NO
   , ARG_STRING
@@ -132,9 +138,12 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->testnet_given = 0 ;
   args_info->disable_tx_mining_given = 0 ;
   args_info->minfee_given = 0 ;
+  args_info->block_peer_selection_given = 0 ;
   args_info->chain_db_given = 0 ;
   args_info->peers_db_given = 0 ;
+  args_info->chain_db_journal_given = 0 ;
   args_info->debug_given = 0 ;
+  args_info->latency_log_given = 0 ;
   args_info->rpc_given = 0 ;
   args_info->publicrpc_given = 0 ;
   args_info->stratum_given = 0 ;
@@ -154,10 +163,16 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->connect_orig = NULL;
   args_info->minfee_arg = NULL;
   args_info->minfee_orig = NULL;
+  args_info->block_peer_selection_arg = NULL;
+  args_info->block_peer_selection_orig = NULL;
   args_info->chain_db_arg = NULL;
   args_info->chain_db_orig = NULL;
   args_info->peers_db_arg = NULL;
   args_info->peers_db_orig = NULL;
+  args_info->chain_db_journal_arg = NULL;
+  args_info->chain_db_journal_orig = NULL;
+  args_info->latency_log_arg = NULL;
+  args_info->latency_log_orig = NULL;
   args_info->rpc_arg = NULL;
   args_info->rpc_orig = NULL;
   args_info->publicrpc_arg = NULL;
@@ -184,16 +199,19 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->testnet_help = gengetopt_args_info_detailed_help[11] ;
   args_info->disable_tx_mining_help = gengetopt_args_info_detailed_help[12] ;
   args_info->minfee_help = gengetopt_args_info_detailed_help[13] ;
-  args_info->chain_db_help = gengetopt_args_info_detailed_help[15] ;
-  args_info->peers_db_help = gengetopt_args_info_detailed_help[17] ;
-  args_info->debug_help = gengetopt_args_info_detailed_help[20] ;
-  args_info->rpc_help = gengetopt_args_info_detailed_help[22] ;
-  args_info->publicrpc_help = gengetopt_args_info_detailed_help[23] ;
-  args_info->stratum_help = gengetopt_args_info_detailed_help[24] ;
-  args_info->enable_public_help = gengetopt_args_info_detailed_help[25] ;
-  args_info->config_help = gengetopt_args_info_detailed_help[27] ;
-  args_info->test_help = gengetopt_args_info_detailed_help[28] ;
-  args_info->dump_config_help = gengetopt_args_info_detailed_help[29] ;
+  args_info->block_peer_selection_help = gengetopt_args_info_detailed_help[14] ;
+  args_info->chain_db_help = gengetopt_args_info_detailed_help[16] ;
+  args_info->peers_db_help = gengetopt_args_info_detailed_help[18] ;
+  args_info->chain_db_journal_help = gengetopt_args_info_detailed_help[21] ;
+  args_info->debug_help = gengetopt_args_info_detailed_help[22] ;
+  args_info->latency_log_help = gengetopt_args_info_detailed_help[23] ;
+  args_info->rpc_help = gengetopt_args_info_detailed_help[25] ;
+  args_info->publicrpc_help = gengetopt_args_info_detailed_help[26] ;
+  args_info->stratum_help = gengetopt_args_info_detailed_help[27] ;
+  args_info->enable_public_help = gengetopt_args_info_detailed_help[28] ;
+  args_info->config_help = gengetopt_args_info_detailed_help[30] ;
+  args_info->test_help = gengetopt_args_info_detailed_help[31] ;
+  args_info->dump_config_help = gengetopt_args_info_detailed_help[32] ;
   
 }
 
@@ -298,10 +316,16 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->connect_orig));
   free_string_field (&(args_info->minfee_arg));
   free_string_field (&(args_info->minfee_orig));
+  free_string_field (&(args_info->block_peer_selection_arg));
+  free_string_field (&(args_info->block_peer_selection_orig));
   free_string_field (&(args_info->chain_db_arg));
   free_string_field (&(args_info->chain_db_orig));
   free_string_field (&(args_info->peers_db_arg));
   free_string_field (&(args_info->peers_db_orig));
+  free_string_field (&(args_info->chain_db_journal_arg));
+  free_string_field (&(args_info->chain_db_journal_orig));
+  free_string_field (&(args_info->latency_log_arg));
+  free_string_field (&(args_info->latency_log_orig));
   free_string_field (&(args_info->rpc_arg));
   free_string_field (&(args_info->rpc_orig));
   free_string_field (&(args_info->publicrpc_arg));
@@ -360,12 +384,18 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "disable-tx-mining", 0, 0 );
   if (args_info->minfee_given)
     write_into_file(outfile, "minfee", args_info->minfee_orig, 0);
+  if (args_info->block_peer_selection_given)
+    write_into_file(outfile, "block-peer-selection", args_info->block_peer_selection_orig, 0);
   if (args_info->chain_db_given)
     write_into_file(outfile, "chain-db", args_info->chain_db_orig, 0);
   if (args_info->peers_db_given)
     write_into_file(outfile, "peers-db", args_info->peers_db_orig, 0);
+  if (args_info->chain_db_journal_given)
+    write_into_file(outfile, "chain-db-journal", args_info->chain_db_journal_orig, 0);
   if (args_info->debug_given)
     write_into_file(outfile, "debug", 0, 0 );
+  if (args_info->latency_log_given)
+    write_into_file(outfile, "latency-log", args_info->latency_log_orig, 0);
   if (args_info->rpc_given)
     write_into_file(outfile, "rpc", args_info->rpc_orig, 0);
   if (args_info->publicrpc_given)
@@ -633,9 +663,12 @@ cmdline_parser_internal (
         { "testnet",	0, NULL, 0 },
         { "disable-tx-mining",	0, NULL, 0 },
         { "minfee",	1, NULL, 0 },
+        { "block-peer-selection",	1, NULL, 0 },
         { "chain-db",	1, NULL, 0 },
         { "peers-db",	1, NULL, 0 },
+        { "chain-db-journal",	1, NULL, 0 },
         { "debug",	0, NULL, 'd' },
+        { "latency-log",	1, NULL, 0 },
         { "rpc",	1, NULL, 'r' },
         { "publicrpc",	1, NULL, 0 },
         { "stratum",	1, NULL, 0 },
@@ -812,6 +845,20 @@ cmdline_parser_internal (
               goto failure;
           
           }
+          /* Single-block peer scheduling: legacy or latency.  */
+          else if (strcmp (long_options[option_index].name, "block-peer-selection") == 0)
+          {
+
+
+            if (update_arg( (void *)&(args_info->block_peer_selection_arg),
+                 &(args_info->block_peer_selection_orig), &(args_info->block_peer_selection_given),
+                &(local_args_info.block_peer_selection_given), optarg, 0, 0, ARG_STRING,
+                check_ambiguity, override, 0, 0,
+                "block-peer-selection", '-',
+                additional_error))
+              goto failure;
+
+          }
           /* specify chain data file.  */
           else if (strcmp (long_options[option_index].name, "chain-db") == 0)
           {
@@ -839,6 +886,34 @@ cmdline_parser_internal (
                 additional_error))
               goto failure;
           
+          }
+          /* Chain database journal: delete or wal (FULL durability).  */
+          else if (strcmp (long_options[option_index].name, "chain-db-journal") == 0)
+          {
+
+
+            if (update_arg( (void *)&(args_info->chain_db_journal_arg),
+                 &(args_info->chain_db_journal_orig), &(args_info->chain_db_journal_given),
+                &(local_args_info.chain_db_journal_given), optarg, 0, 0, ARG_STRING,
+                check_ambiguity, override, 0, 0,
+                "chain-db-journal", '-',
+                additional_error))
+              goto failure;
+
+          }
+          /* Latency diagnostics: off, summary, or detail.  */
+          else if (strcmp (long_options[option_index].name, "latency-log") == 0)
+          {
+
+
+            if (update_arg( (void *)&(args_info->latency_log_arg),
+                 &(args_info->latency_log_orig), &(args_info->latency_log_given),
+                &(local_args_info.latency_log_given), optarg, 0, 0, ARG_STRING,
+                check_ambiguity, override, 0, 0,
+                "latency-log", '-',
+                additional_error))
+              goto failure;
+
           }
           /* Public JSON RPC endpoint socket, disabled by default.  */
           else if (strcmp (long_options[option_index].name, "publicrpc") == 0)

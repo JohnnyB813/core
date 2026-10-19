@@ -102,6 +102,7 @@ void Connection::read_cb(ssize_t nread, const uv_buf_t* /*buf*/)
     }
     if (stagebuffer.body.bytes.size() != 0 && stagebuffer.pos == 8 + stagebuffer.body.bytes.size()) {
         if (stagebuffer.finished()) {
+            stagebuffer.completedAt = latency::Clock::now();
             spdlog::debug("Received complete message");
 
             {

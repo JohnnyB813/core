@@ -264,7 +264,7 @@ private:
 
     // mutex protected variables
     std::mutex mutex;
-    std::queue<Event> events;
+    std::queue<latency::Queued<Event>> events;
     MiningSubscriptions miningSubscriptions;
 
     //

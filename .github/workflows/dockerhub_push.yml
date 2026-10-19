@@ -70,6 +70,25 @@ jobs:
       - name: Stratum socket regression tests
         run: python3 src/test/run_stratum_docker.py --image warthog-node:ci
 
+      - name: CLI and TOML regression tests
+        run: python3 src/test/config_runtime.py --image warthog-node:ci
+
+      - name: Build offline latency test runtime
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: dockerfiles/build_linux
+          target: test-runtime
+          platforms: linux/amd64
+          build-args: BUILD_JOBS=2
+          load: true
+          tags: warthog-latency-tests:ci
+          cache-from: type=gha,scope=warthog-linux-amd64
+          provenance: false
+
+      - name: Mainnet replay, P2P rejection, and database recovery regressions
+        run: docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp warthog-latency-tests:ci
+
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0

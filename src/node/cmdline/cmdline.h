@@ -53,13 +53,22 @@ struct gengetopt_args_info
   char * minfee_arg;	/**< @brief Set minimal transaction fee accepted by this node, defaults to 0.01.  */
   char * minfee_orig;	/**< @brief Set minimal transaction fee accepted by this node, defaults to 0.01 original value given at command line.  */
   const char *minfee_help; /**< @brief Set minimal transaction fee accepted by this node, defaults to 0.01 help description.  */
+  char * block_peer_selection_arg;	/**< @brief Single-block peer scheduling: legacy or latency.  */
+  char * block_peer_selection_orig;	/**< @brief Single-block peer scheduling: legacy or latency original value given at command line.  */
+  const char *block_peer_selection_help; /**< @brief Single-block peer scheduling: legacy or latency help description.  */
   char * chain_db_arg;	/**< @brief specify chain data file.  */
   char * chain_db_orig;	/**< @brief specify chain data file original value given at command line.  */
   const char *chain_db_help; /**< @brief specify chain data file help description.  */
   char * peers_db_arg;	/**< @brief specify data file.  */
   char * peers_db_orig;	/**< @brief specify data file original value given at command line.  */
   const char *peers_db_help; /**< @brief specify data file help description.  */
+  char * chain_db_journal_arg;	/**< @brief Chain database journal: delete or wal (FULL durability).  */
+  char * chain_db_journal_orig;	/**< @brief Chain database journal: delete or wal (FULL durability) original value given at command line.  */
+  const char *chain_db_journal_help; /**< @brief Chain database journal: delete or wal (FULL durability) help description.  */
   const char *debug_help; /**< @brief Enable debug messages help description.  */
+  char * latency_log_arg;	/**< @brief Latency diagnostics: off, summary, or detail.  */
+  char * latency_log_orig;	/**< @brief Latency diagnostics: off, summary, or detail original value given at command line.  */
+  const char *latency_log_help; /**< @brief Latency diagnostics: off, summary, or detail help description.  */
   char * rpc_arg;	/**< @brief JSON RPC endpoint socket, defaults to \"127.0.0.1:3000\" for main net and \"127.0.0.1:3100\" for test net.  */
   char * rpc_orig;	/**< @brief JSON RPC endpoint socket, defaults to \"127.0.0.1:3000\" for main net and \"127.0.0.1:3100\" for test net original value given at command line.  */
   const char *rpc_help; /**< @brief JSON RPC endpoint socket, defaults to \"127.0.0.1:3000\" for main net and \"127.0.0.1:3100\" for test net help description.  */
@@ -86,9 +95,12 @@ struct gengetopt_args_info
   unsigned int testnet_given ;	/**< @brief Whether testnet was given.  */
   unsigned int disable_tx_mining_given ;	/**< @brief Whether disable-tx-mining was given.  */
   unsigned int minfee_given ;	/**< @brief Whether minfee was given.  */
+  unsigned int block_peer_selection_given ;	/**< @brief Whether block-peer-selection was given.  */
   unsigned int chain_db_given ;	/**< @brief Whether chain-db was given.  */
   unsigned int peers_db_given ;	/**< @brief Whether peers-db was given.  */
+  unsigned int chain_db_journal_given ;	/**< @brief Whether chain-db-journal was given.  */
   unsigned int debug_given ;	/**< @brief Whether debug was given.  */
+  unsigned int latency_log_given ;	/**< @brief Whether latency-log was given.  */
   unsigned int rpc_given ;	/**< @brief Whether rpc was given.  */
   unsigned int publicrpc_given ;	/**< @brief Whether publicrpc was given.  */
   unsigned int stratum_given ;	/**< @brief Whether stratum was given.  */

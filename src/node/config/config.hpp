@@ -4,6 +4,7 @@
 #include "general/compact_uint.hpp"
 #include "general/tcp_util.hpp"
 #include <atomic>
+#include "general/latency.hpp"
 struct gengetopt_args_info;
 struct EndpointVector: public std::vector<EndpointAddress> {
     using vector::vector;
@@ -18,6 +19,7 @@ struct Config {
     struct Data {
         std::string chaindb;
         std::string peersdb;
+        std::string chainJournal { "wal" };
     } data;
     struct JSONRPC {
         EndpointAddress bind;
@@ -37,6 +39,9 @@ struct Config {
         bool isolated { false };
         bool disableTxsMining { false }; // don't mine transactions
         std::atomic<bool> logCommunication { false };
+        // Keep optional diagnostics and peer ranking explicit until their gates pass.
+        std::string latencyLog { "off" };
+        std::string blockPeerSelection { "legacy" };
     } node;
     struct Peers {
         bool allowLocalhostIp = false; // do not ignore 127.xxx.xxx.xxx peer node addresses provided by peers
@@ -52,4 +57,5 @@ struct Config {
     Config();
 private:
     int process_gengetopt(gengetopt_args_info&);
+    void validate_performance_options() const;
 };

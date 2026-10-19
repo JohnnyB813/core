@@ -290,7 +290,9 @@ private: // private data
     bool haswork = false;
     int32_t closeReason = 0;
     bool blockdownloadHalted = false;
-    std::queue<Event> events;
+    std::queue<latency::Queued<Event>> events;
+    latency::TimePoint receivedAt {};
+    latency::TimePoint dispatchedAt {};
     std::thread worker; // worker (constructed last)
 };
 

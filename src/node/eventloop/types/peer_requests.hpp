@@ -6,9 +6,12 @@
 
 #include <chrono>
 #include <memory>
+#include "general/latency.hpp"
 struct IsRequest {
     static constexpr auto expiry_time = std::chrono::seconds(30);
     bool isActiveRequest = true;
+    bool expired = false;
+    latency::TimePoint sentAt {};
     void unref_active_requests(size_t& activeRequests)
     {
         if (isActiveRequest) {
@@ -44,6 +47,7 @@ struct Blockrequest : public BlockreqMsg, public IsRequest {
     }
     std::shared_ptr<Descripted> descripted;
     Hash upperHash;
+    std::vector<latency::TracePtr> traces;
 };
 
 struct Batchrequest : public BatchreqMsg, public IsRequest {

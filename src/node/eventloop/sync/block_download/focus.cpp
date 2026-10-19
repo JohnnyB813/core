@@ -50,7 +50,15 @@ Blockrequest Focus::FocusSlot::link_request(Conref cr)
 
     // craft block request
     auto& descripted = data(cr).descripted();
-    return Blockrequest(descripted, r, focus.headers().hash_at(r.upper));
+    Blockrequest req(descripted, r, focus.headers().hash_at(r.upper));
+    if (latency::enabled()) {
+        for (auto h = r.lower; h <= r.upper; ++h) {
+            auto trace = latency::make_trace(h.value(), focus.headers().hash_at(h), cr.id(), r.length());
+            if (trace) trace->outcome = latency::Outcome::Stale;
+            req.traces.push_back(std::move(trace));
+        }
+    }
+    return req;
 }
 
 bool Focus::has_data()
@@ -76,10 +84,13 @@ std::vector<Block> Focus::pop_data()
         for (size_t j = 0; j < from.size(); ++j) {
             ++downloadLength;
             auto h { downloadLength.nonzero_assert() };
+            auto trace = std::find_if(iter->second.traces.begin(), iter->second.traces.end(),
+                [h](const auto& t) { return t && t->identity.height == h.value(); });
             out.push_back(Block {
                 .height = h,
                 .header = headers()[h],
-                .body = std::move(from[j]) });
+                .body = std::move(from[j]),
+                .trace = trace == iter->second.traces.end() ? latency::TracePtr {} : std::move(*trace) });
         }
         if (downloadLength < node.batch_upper()) {
             from.clear();
@@ -209,7 +220,7 @@ void Focus::set_offset(Height newOffset)
     }
 }
 
-void Focus::set_blocks(BlockSlot slot, Height reqBegin, std::vector<BodyContainer>&& blocks)
+bool Focus::set_blocks(BlockSlot slot, Height reqBegin, std::vector<BodyContainer>&& blocks, const std::vector<latency::TracePtr>& traces)
 {
     auto [iter, created] { map.try_emplace(slot) };
     FocusNode& fn { iter->second };
@@ -217,7 +228,7 @@ void Focus::set_blocks(BlockSlot slot, Height reqBegin, std::vector<BodyContaine
         if (reqBegin != slot.lower_height()) {
             spdlog::debug("Discarding block batch, slotStart: {}, lowerHeight: {}",
                 slot.lower_height().value(), reqBegin.value());
-            return;
+            return false;
         }
         fn.blockBodies = std::move(blocks);
     } else { // already present
@@ -226,7 +237,7 @@ void Focus::set_blocks(BlockSlot slot, Height reqBegin, std::vector<BodyContaine
         if (missingStart < reqBegin) {
             spdlog::debug("Discarding block batch, missingStart: {}, lowerHeight: {}",
                 missingStart.value(), reqBegin.value());
-            return;
+            return false;
         }
 
         for (size_t i = missingStart - reqBegin; i < blocks.size(); ++i) {
@@ -234,5 +245,7 @@ void Focus::set_blocks(BlockSlot slot, Height reqBegin, std::vector<BodyContaine
         }
         assert(blockBodies.size() <= BLOCKBATCHSIZE);
     }
+    fn.traces.insert(fn.traces.end(), traces.begin(), traces.end());
+    return true;
 }
 }

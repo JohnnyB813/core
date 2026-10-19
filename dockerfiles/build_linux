@@ -7,11 +7,21 @@ WORKDIR /code
 # Cache downloaded sources, not the Meson build directory: a missing cache
 # must never leave a cached setup step pointing at an empty build directory.
 RUN --mount=type=cache,id=warthog-linux-sources,target=/code/subprojects/packagecache,sharing=locked \
-    LDFLAGS='-static' meson setup /build --default-library static --buildtype=release \
+    LDFLAGS='-static' meson setup /build --default-library static --buildtype=release -Dperformance-tools=true \
     && meson compile -C /build -j "${BUILD_JOBS}" \
     && meson test -C /build --no-rebuild --print-errorlogs \
     && DESTDIR=/install meson install -C /build --no-rebuild \
     && upx /install/usr/local/bin/wart-node
+
+FROM python:3.14-alpine3.23 AS test-runtime
+COPY --from=build /install/usr/local/bin/wart-node /tools/wart-node
+COPY --from=build /build/src/node/node_replay /tools/node_replay
+COPY --from=build /build/src/node/node_replay_old_sqlite /tools/node_replay_old_sqlite
+COPY --from=build /build/src/test/sqlite_workload /tools/sqlite_workload
+COPY --from=build /build/src/test/sqlite_workload_old /tools/sqlite_workload_old
+COPY src/test /checks
+ENV HOME=/trial
+ENTRYPOINT ["python3", "/checks/run_ci_latency.py"]
 
 FROM scratch AS export-stage
 COPY --from=build /install/usr/local/bin/wart-node /wart-node-linux

@@ -1,2 +1,3 @@
 option('enable-gpu-miner', type : 'boolean', value : false)
 option('opencl-legacy', type : 'boolean', value : false)
+option('performance-tools', type: 'boolean', value: false, description: 'Build disposable-database replay tools and pinned old-SQLite comparison binaries')

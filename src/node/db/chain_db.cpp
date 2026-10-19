@@ -30,9 +30,10 @@ ChainDBTransaction ChainDB::transaction()
 {
     return ChainDBTransaction(*this);
 }
-ChainDB::ChainDB(const std::string& path)
+ChainDB::ChainDB(const std::string& path, const std::string& mode)
     : db(path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)
     , fl(path)
+    , journal(db, path, mode)
     , createTables(db)
     , cache(Cache::init(db))
     , stmtBlockInsert(db, "INSERT INTO \"Blocks\" ( `height`, `header`, `body` "
@@ -112,8 +113,7 @@ ChainDB::ChainDB(const std::string& path)
                           "`AccountHistory` `ah` ON h.id=`ah`.history_id WHERE "
                           "ah.`account_id`=? AND h.id<? ORDER BY h.id DESC LIMIT 100")
 {
-
-    //
+    spdlog::info("SQLite {}: chain journal={}, synchronous=FULL, wal_autocheckpoint=1000", sqlite3_libversion(), journal.effective);
     // Do DELETESCHEDULE cleanup
     db.exec("UPDATE `Deleteschedule` SET `deletion_key`=1");
 }

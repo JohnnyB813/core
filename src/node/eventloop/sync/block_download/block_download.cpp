@@ -9,6 +9,7 @@
 #include "eventloop/eventloop.hpp"
 #include "eventloop/types/peer_requests.hpp"
 #include "spdlog/spdlog.h"
+#include "global/globals.hpp"
 
 namespace BlockDownload {
 using enum ServerCall;
@@ -266,6 +267,23 @@ void Downloader::do_block_requests(RequestSender s) // OK?
         auto& range { n->r };
         if (forkIter->first <= range.upper)
             forkIter = forks.lower_bound(range.upper + 1);
+        if (range.length() == 1 && config().node.blockPeerSelection == "latency") {
+            std::vector<Conref> eligible;
+            std::vector<PeerCandidate> candidates;
+            for (auto it = forks.lower_bound(range.upper + 1); it != forks.end(); ++it) {
+                auto cr = it->second;
+                if (!cr.job()) {
+                    eligible.push_back(cr);
+                    candidates.push_back({cr.id(), &cr->latencyStats});
+                }
+            }
+            if (eligible.empty()) return;
+            auto cr = eligible[peerSelector.select(candidates, latency::Clock::now())];
+            auto req = n->link_request(cr);
+            s.send(cr, req);
+            if (s.finished()) return;
+            continue;
+        }
         while (true) {
             if (forkIter == forks.end())
                 return;
@@ -295,18 +313,18 @@ std::optional<stage_operation::Operation> Downloader::pop_stage()
     }
 }
 
-void Downloader::on_blockreq_reply(Conref cr, BlockrepMsg&& rep, Blockrequest& req)
+bool Downloader::on_blockreq_reply(Conref cr, BlockrepMsg&& rep, Blockrequest& req)
 { // OK
     focus.erase(cr);
 
     if (!initialized)
-        return;
+        return false;
 
     if (rep.empty()) {
         if (!req.descripted->expired()) {
             throw ChainError { EEMPTY, req.range.lower };
         } else {
-            return;
+            return false;
         }
     }
 
@@ -321,13 +339,13 @@ void Downloader::on_blockreq_reply(Conref cr, BlockrepMsg&& rep, Blockrequest& r
 
     // discard old replies
     if (req.range.upper < focus.height_begin())
-        return;
+        return false;
 
     // check hash
     if (headers().length() < req.range.upper)
-        return;
+        return false;
     if (headers().hash_at(req.range.upper) != req.upperHash)
-        return;
+        return false;
 
     // check merkle roots
     size_t i0 = (req.range.lower < focus.height_begin() ? focus.height_begin() - req.range.lower : 0);
@@ -341,8 +359,7 @@ void Downloader::on_blockreq_reply(Conref cr, BlockrepMsg&& rep, Blockrequest& r
     }
 
     const BlockSlot slot(req.range.lower);
-    focus.set_blocks(slot, req.range.lower, std::move(rep.blocks));
-    return;
+    return focus.set_blocks(slot, req.range.lower, std::move(rep.blocks), req.traces);
 }
 
 void Downloader::reset()

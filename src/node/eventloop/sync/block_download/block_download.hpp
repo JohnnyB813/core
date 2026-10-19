@@ -12,6 +12,7 @@
 #include "eventloop/types/peer_requests.hpp"
 #include "focus.hpp"
 #include "stage_state.hpp"
+#include "peer_latency.hpp"
 #include <array>
 namespace HeaderDownload {
 class LeaderInfo;
@@ -42,7 +43,7 @@ public:
     void on_fork(Conref cr);
     void on_append(Conref cr);
     void on_rollback(Conref c);
-    void on_blockreq_reply(Conref, BlockrepMsg&&, Blockrequest&);
+    bool on_blockreq_reply(Conref, BlockrepMsg&&, Blockrequest&);
     void on_blockreq_expire(Conref cr);
     void on_probe_reply(Conref cr, const ProbereqMsg&, const ProberepMsg&);
     void on_probe_expire(Conref cr);
@@ -90,6 +91,7 @@ private:
 
     // download focus related
     Focus focus;
+    PeerSelector peerSelector;
 
     // state helper variables
     bool initialized = false;

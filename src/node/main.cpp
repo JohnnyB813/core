@@ -6,6 +6,7 @@
 #include "db/peer_db.hpp"
 #include "eventloop/eventloop.hpp"
 #include "general/errors.hpp"
+#include "general/is_testnet.hpp"
 #include "global/globals.hpp"
 #include "peerserver/peerserver.hpp"
 #include "spdlog/spdlog.h"
@@ -79,6 +80,9 @@ int main(int argc, char** argv)
     int i = init_config(argc, argv);
     if (i <= 0)
         return i; // >0 means continue with execution
+    const auto latencyMode = config().node.latencyLog == "detail" ? latency::Mode::Detail
+        : config().node.latencyLog == "summary" ? latency::Mode::Summary : latency::Mode::Off;
+    latency::Runtime diagnostics(latencyMode, config().defaultDataDir + (is_testnet() ? "logs_testnet" : "logs"));
     BatchRegistry breg;
 
     spdlog::flush_every(5s);
@@ -98,7 +102,7 @@ int main(int argc, char** argv)
     spdlog::info("{} IPs are currently blacklisted.", pdb.get_banned_peers().size());
 
     spdlog::debug("Opening chain database \"{}\"", config().data.chaindb);
-    ChainDB db(config().data.chaindb);
+    ChainDB db(config().data.chaindb, config().data.chainJournal);
     auto cs = ChainServer::make_chain_server(db, breg, config().node.snapshotSigner);
 
     std::optional<StratumServer> stratumServer;
