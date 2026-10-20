@@ -54,8 +54,12 @@ void Forks::match(Conref c, const Headerchain& headers, NonzeroHeight h, HeaderV
     auto& fd { d.forkData.value() };
     auto fr { fd.range() };
 
-    if (fr.match(headers, h, hv).changedLower)
+    const auto change = fr.match(headers, h, hv);
+    if (change.changedLower)
         replace_fork_iter(fd, c, fr);
+    else if (change.changedUpper)
+        // Keep negative evidence too, without changing legacy order at this key.
+        fd.udpate_iter_range(fd.iter(), fr);
 }
 
 void Forks::clear()

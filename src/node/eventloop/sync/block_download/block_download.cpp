@@ -231,7 +231,9 @@ void Downloader::do_probe_requests(RequestSender rs)
         if (u > focusBegin) {
             assert(u >= fr.lower());
             auto probeHeight { fr.lower() + (u - fr.lower()) / 2 };
-            if (probeHeight > fr.lower()) {
+            // lower() is the first unverified height, so it is a valid probe.
+            // An empty interval (lower == u) has no header left to check.
+            if (probeHeight < u) {
                 Proberequest req(data(c).descripted(), probeHeight);
                 rs.send(c, req);
             }
