@@ -3,7 +3,10 @@
 The initial review used `f57e5edf2c35ba925f31af49b0fed6c1b4e58dab`. The bugs
 below predate the three optimizations in that commit. The first three findings
 are fixed together in the focused patch, with the verification recorded below;
-the other findings remain outside this patch. Performance follow-ups are recorded
+the other findings remain outside that patch. Failed-address insertion,
+Janushash error handling and worker synchronization are now addressed by a
+[local follow-up patch](local-correctness-and-stratum-submission.md), including an
+initialization race exposed by repeated socket trials. Performance follow-ups are recorded
 in [optimization future work](optimization-future-work.md).
 
 ## Network compatibility requirement
@@ -98,8 +101,10 @@ and the new compiled test source were checked against the working tree.
 
 ## Findings and original fix priorities
 
-The first three rows below are implemented by the focused patch above. The
-remaining rows are still proposals, subject to their compatibility classifications.
+The first three rows below are implemented by the focused patch above.
+Failed-address insertion and invalid Janushash handling are implemented by the
+follow-up patch. Hashrate reporting remains a proposal under its compatibility
+classification; the table preserves the original discovery evidence.
 
 | Priority | Finding | Evidence and consequence | Suggested patch and regression coverage |
 | --- | --- | --- | --- |
@@ -129,13 +134,13 @@ remaining rows are still proposals, subject to their compatibility classificatio
 
 ## Other correctness findings
 
-- **Chain-worker flag access is not synchronized.** Producers write `haswork`
+- **Chain-worker flag access was not synchronized; fixed in the follow-up.** Producers wrote `haswork`
   and `closing` while holding the mutex, but
-  [the worker](../src/node/chainserver/server.cpp#L179) clears/reads them after
-  releasing it. Both are ordinary `bool`s. Keep predicate checking, reset, close
-  handling and queue extraction under the same lock. This is established by
-  source inspection; no ThreadSanitizer result or reproducible shutdown hang is
-  claimed. Test concurrent producers, idle wakeups and shutdown before adopting.
+  [the worker](../src/node/chainserver/server.cpp#L179) previously cleared/read them after
+  releasing it. Both are ordinary `bool`s. The follow-up keeps reset and close
+  checking inside the existing mutex scope and preserves queue extraction order.
+  Concurrent-producer, idle-wakeup, callback ownership and shutdown regressions
+  pass. No ThreadSanitizer result or deterministic race reproduction is claimed.
 - **IMPOSSIBLE CURRENTLY — correcting the timestamp maximum changes consensus.**
   [TimestampValidator::append](../src/node/block/header/timestamprule.hpp#L41)
   only assigns `tmax` when it is already greater than the incoming timestamp;

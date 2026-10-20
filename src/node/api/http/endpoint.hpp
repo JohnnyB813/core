@@ -24,12 +24,17 @@ private:
 
 class HTTPEndpoint {
 public:
-    static std::optional<HTTPEndpoint> make_public_endpoint(const Config&);
-    HTTPEndpoint(EndpointAddress bind, bool isPublic = false);
+    enum class StartMode { Immediate, Deferred };
+    static std::optional<HTTPEndpoint> make_public_endpoint(const Config&, StartMode = StartMode::Immediate);
+    HTTPEndpoint(EndpointAddress bind, bool isPublic = false, StartMode = StartMode::Immediate);
+    // Called by the owner after the services used by handlers are initialized.
+    void start();
     ~HTTPEndpoint()
     {
-        lc.loop->defer(std::bind(&HTTPEndpoint::shutdown, this));
-        t.join();
+        if (t.joinable()) {
+            lc.loop->defer(std::bind(&HTTPEndpoint::shutdown, this));
+            t.join();
+        }
     }
     void push_event(WebsocketEvent e)
     {

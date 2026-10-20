@@ -13,7 +13,7 @@ void FlatAddressSet::insert(EndpointAddress& a)
     if (iter == vec.end())
         vec.insert(iter, a);
     else if (*iter != a) {
-        vec.insert(std::next(iter), a);
+        vec.insert(iter, a);
     }
 }
 void FlatAddressSet::erase(EndpointAddress a)

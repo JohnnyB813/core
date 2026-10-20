@@ -79,6 +79,28 @@ mempool_replacement = executable('mempool_replacement', vcs_dep, '../test/mempoo
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Mempool replacement accounting', mempool_replacement)
 
+local_correctness = executable('local_correctness', vcs_dep, '../test/local_correctness.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+foreach group : ['addresses', 'janushash']
+  test('Local correctness ' + group, local_correctness, args: [group])
+endforeach
+
+worker_cpp_args = []
+worker_link_args = []
+if host_machine.system() == 'linux'
+  worker_cpp_args = ['-DWORKER_JOIN_BARRIER']
+  worker_link_args = ['-Wl,--wrap=pthread_join']
+endif
+chain_worker = executable('chain_worker', vcs_dep, '../test/chain_worker.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  cpp_args: worker_cpp_args, link_args: worker_link_args,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Chain worker concurrency and shutdown', chain_worker, timeout: 120,
+  env: {'HOME': meson.current_build_dir() / 'worker-home'})
+
 mempool_reconciliation = executable('mempool_reconciliation', vcs_dep, '../test/mempool_reconciliation.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
@@ -112,6 +134,20 @@ stratum_preparation = executable('stratum_preparation', vcs_dep, '../test/stratu
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Stratum work preparation', stratum_preparation)
 
+stratum_job_cache = executable('stratum_job_cache', vcs_dep, '../test/stratum_job_cache.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Stratum job cache', stratum_job_cache)
+
+stratum_submission = executable('stratum_submission', vcs_dep, '../test/stratum_submission.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+foreach network : ['mainnet', 'testnet']
+  test('Stratum submission ' + network, stratum_submission, args: [network])
+endforeach
+
 db_maintenance = executable('db_maintenance', vcs_dep, '../test/db_maintenance.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
@@ -128,6 +164,22 @@ test('Block lookup height and identity', block_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
 if get_option('performance-tools')
+  submit_profile_sources = []
+  foreach source : src
+    if source != './api/stratum/stratum_server.cpp'
+      submit_profile_sources += files(source)
+    endif
+  endforeach
+  executable('stratum_submission_profile', vcs_dep,
+    ['./main.cpp', './api/stratum/stratum_server.cpp', '../test/stratum_submission_profile.cpp'],
+    objects: node_runtime.extract_objects(submit_profile_sources + src_sqlitecpp + src_wh),
+    include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+    cpp_args: ['-Dput_chain_append=profile_chain_append'],
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+  executable('stratum_submit_fixture', vcs_dep, '../test/stratum_submit_fixture.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
   executable('block_application_profile', vcs_dep, '../test/block_application_profile.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],

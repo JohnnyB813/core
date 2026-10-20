@@ -8,6 +8,13 @@ The focused reorg-expiry and balance-reconciliation patch is now implemented and
 tested; see [patch scope and verification](node-correctness-review.md#focused-reconciliation-patch).
 The performance-only candidates below remain deferred.
 
+The [local correctness and Stratum follow-up](local-correctness-and-stratum-submission.md)
+implements failed-address insertion, invalid Janushash handling, worker locking
+and safe listener startup. It also qualifies cached Merkle-prefix preparation on
+accepted Stratum submissions. The saving is bounded to preparation; complete
+accepted-block latency and mining gains remain unqualified. These changes passed
+local validation; production deployment remains a separate step.
+
 Implemented patches and their bounded measurements are documented in
 [Transaction admission optimization](transaction-admission-optimization.md),
 [Stratum message preparation](stratum-preparation-optimization.md), and
@@ -191,14 +198,14 @@ opportunities below remain separate, deferred work.
 | Candidate | Evidence | Qualification and limits |
 | --- | --- | --- |
 | Give `ExtendableHeaderchain` actual move operations | The derived class declares copy operations without matching derived moves. A real `dest = std::move(source)` kept the source at height 8,190 and copied its incomplete-header allocation. This occurs inside append/fork reconciliation, beyond the request/result copies identified earlier. | Transfer the verifier and header ownership together, retain the required live stage snapshot, and audit every moved-from read. In particular, multi append currently reads the source length after the apparent move; enabling moves without correcting this would introduce an expiry bug. Use boundary, fork, cumulative-work, template and replay tests, then measure block-to-miner latency. |
-| Reuse a cached job's Merkle prefix when preparing a Stratum submission | Submission copies the cached body, patches its ten-byte seed and recomputes the entire Merkle tree. The immutable prefix already used in notifications can produce the same root by hashing it with the new seed. Five-round component screens covered 0, 100 and 300 transfers and checked 300 exact root equivalences. | Cache the prefix per job and retain complete body/root validation on the chain worker. This targets solution submission, separate from notification formatting and the earlier general template/root cache screens. Qualify through real socket submissions, stale jobs, reauthorization, job replacement and actual block acceptance. Empty-job savings are below 1 µs; no end-to-end gain is established. |
+| Reuse a cached job's Merkle prefix when preparing a Stratum submission | Implemented and correctness-tested in the follow-up. Five paired rounds on 180 accepted socket submissions measured preparation at 121.5 to 10.5 microseconds for 100 transfers and 335 to 33 microseconds for 300 transfers; all five rounds improved. A separate 600-accepted-block comparison preserved paired bodies and balances. | Full body/root/PoW/signature validation remains intact, with historical-format fallback. Complete accepted-block latency is still unqualified because paired timing and commit tails vary. No empty-job, propagation, orphan-rate or revenue gain is claimed. See the [scope, controls and qualification](local-correctness-and-stratum-submission.md). |
 | Index mining-cache entries by payout and transaction policy | `MiningCache::lookup` linearly searches a vector for every payout. A full hit sweep grows quadratically with the number of distinct payout addresses. The screen measured 1, 32, 256 and 1,024 addresses. | Consider a keyed index only for many distinct payouts. The current small local miner setup is unlikely to benefit. Compare complete template dispatch and allocation/RSS with the vector; preserve cache invalidation and response ownership. |
 | Compact the per-height account/history offset indexes | `Chainstate` keeps two 64-bit offset vectors with one entry per height. At 5,184,400 headers, their logical element storage alone is 82,950,400 bytes, about 79 MiB, before spare capacity and other structures. Account offsets can repeat over many blocks. | First measure real capacities, RSS and lookup/startup costs. Screen compact deltas or runs with an efficient height index. Preserve `upper_bound` semantics, duplicate offsets, rollback, account-creation heights and history boundaries. This is a calculated storage opportunity, not a measured memory reduction. |
 | Shorten the old-chain cache lock around maintenance I/O | `BlockCache::garbage_collect` holds its mutex across cumulative deletes and durable commit; old-chain header/hash readers use the same mutex. | Only pursue if concurrent readers are observably blocked on deployment storage. Keep scheduled entries and cache ownership until commit succeeds, and preserve pinned/owned header lifetimes. No contention timing or implementation was tested here. |
 
 Sources: [derived chain special members](../src/node/block/chain/consensus_headers.hpp#L55),
 [append reconciliation](../src/node/chainserver/state/helpers/consensus.cpp#L146),
-[Stratum submitted-body/root preparation](../src/node/api/stratum/stratum_server.cpp#L43),
+[Stratum submitted-body/root preparation](../src/node/api/stratum/job_cache.hpp#L25),
 [Merkle prefix](../src/shared/src/block/body/view.cpp#L88),
 [Merkle root](../src/shared/src/block/body/view.cpp#L121),
 [mining-cache lookup](../src/node/chainserver/state/state.cpp#L29),
@@ -217,10 +224,11 @@ For existing mining-cache hit sweeps, median / p95 was 0.020 / 0.030 µs at one
 address, 0.471 / 0.481 µs at 32, 24.076 / 24.387 µs at 256, and
 379.255 / 400.936 µs at 1,024. These are distinct payouts, not worker counts.
 
-The submission screen includes body copy/destruction in both paths and excludes
+The original discovery submission screen includes body copy/destruction in both paths and excludes
 JSON parsing, prefix-cache construction, proof-of-work checks, queueing, durable
 commit and network delivery. It uses synthetic notification bodies and real
-Merkle methods, not signed transactions or submitted valid solutions. A prefix
+Merkle methods, not signed transactions or submitted valid solutions. The later
+accepted-solution qualification is recorded in the follow-up report above. A prefix
 cost is paid when building each cached job; that cost is outside the timed path.
 The lookup screen measures only existing cache hits, not body generation or an
 alternative data structure. Both use five rounds in one process, 20 warm-ups and 500

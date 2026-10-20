@@ -37,6 +37,57 @@ logging in and publishing. The publish build reuses the tested build layers.
 These tests use an isolated genesis testnet. They do not measure valid found-block
 propagation, mainnet synchronization, or orphan rates.
 
+# Local correctness and worker regressions
+
+`Local correctness addresses` compares insertion, duplicate insertion, lookup,
+deletion and clear with `std::set`, across all 720 permutations of six endpoints
+and 10,000 deterministic mixed operations. `Local correctness janushash` checks
+exactly one callback for malformed lengths and hex, plus unchanged formatted
+results for lowercase/uppercase valid headers and both Janushash implementations.
+
+`Chain worker concurrency and shutdown` exercises 200 idle wakeups, 16,000 ordered
+callbacks from eight producers, and callbacks that enqueue more work. Linux tests
+wrap `pthread_join` to establish that close has been published before releasing a
+blocked callback. Forty cases check that the acquired batch finishes, the next
+batch stays unexecuted, and queued captures survive until server destruction.
+The suite also checks deferred HTTP activation and destruction before activation.
+This is functional concurrency coverage; no ThreadSanitizer result is claimed.
+
+# Accepted Stratum submission regressions and profiling
+
+`Stratum submission mainnet` and `Stratum submission testnet` compare 6,800
+complete submission/header/body results with the original full-tree calculation,
+including one-leaf and odd-leaf trees, version/format boundaries, and historical
+fallbacks. They compare notification bytes and verify cached jobs stay immutable.
+
+The optional `stratum_submit_fixture` tool and
+`run_stratum_submission_screen.py` exercise real TCP `mining.submit` requests on
+the ordinary node. Each newly found block passes the existing PoW, header, Merkle,
+signature, balance and commit paths. Both same-payout receivers must receive the
+next job; reauthorization, payout changes and stale jobs are checked too. Paired
+trials require identical body contents apart from the mining seed and equal final
+balances. Admission is sequential so equal-fee transaction ordering is controlled.
+
+The base is a synthetic three-block database with public test keys and an easy
+target, rather than a valid network history. The script requires an isolated Linux
+namespace exposing only `lo`; it must never run against a connected node. It sets
+the fixture's one-unit admission fee through the existing private API. No header,
+PoW, signature, ledger, or durability check is disabled in the node.
+
+With `-Dperformance-tools=true`, `stratum_submission_profile` builds a separate
+test executable: only its Stratum translation unit redirects the append call to a
+timing wrapper, which immediately forwards to the ordinary append implementation.
+It records preparation time only after successful validation and durable commit.
+Run the screen with `STRATUM_SUBMISSION_PROFILE=1` and that executable to enable
+the required existing diagnostic timestamps. The production executable does not
+use this wrapper. Whole accepted-block latency and preparation time are separate
+measurements; see the [qualification report](../../doc/local-correctness-and-stratum-submission.md).
+
+The offline CI runtime now includes nine accepted Stratum submissions with two
+receivers, using empty, 100-transfer and 300-transfer templates. The complete
+native suite has 20 tests. The earlier genesis socket probe remains a separate
+control for reconnects, disconnects and malformed/unknown submissions.
+
 # Mempool reconciliation regressions
 
 The native `mempool_reconciliation` executable provides five default Meson groups:

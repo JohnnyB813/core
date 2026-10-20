@@ -18,7 +18,8 @@ inline Address address(size_t index)
 
 // Notification fixtures only: the transfers are synthetic and not signed.
 // No fixture block is submitted to consensus or sent to peers.
-inline Block block(const Address& payout, size_t transfers)
+inline Block block(const Address& payout, size_t transfers,
+    NonzeroHeight height = NonzeroHeight { uint32_t(1) })
 {
     if (transfers > 300) throw std::runtime_error("fixture transfer limit");
     std::vector<uint8_t> bytes(48 + (transfers ? 4 + 99 * transfers : 0), 0);
@@ -33,7 +34,6 @@ inline Block block(const Address& payout, size_t transfers)
             bytes[i] = uint8_t(i * 131 + payout[19]);
     }
     BodyContainer body(std::move(bytes));
-    const NonzeroHeight height { uint32_t(1) };
     auto view = body.view(height);
     if (!view.valid())
         throw std::runtime_error("invalid notification fixture");

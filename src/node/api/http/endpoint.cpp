@@ -188,21 +188,26 @@ void HTTPEndpoint::work()
     lc.loop->run();
 }
 
-std::optional<HTTPEndpoint> HTTPEndpoint::make_public_endpoint(const Config&)
+std::optional<HTTPEndpoint> HTTPEndpoint::make_public_endpoint(const Config&, StartMode mode)
 {
     auto& pAPI { config().publicAPI };
     if (!pAPI)
         return {};
-    return std::optional<HTTPEndpoint> { std::in_place, pAPI->bind, true };
+    return std::optional<HTTPEndpoint> { std::in_place, pAPI->bind, true, mode };
 };
 
-HTTPEndpoint::HTTPEndpoint(EndpointAddress bind, bool isPublic)
+HTTPEndpoint::HTTPEndpoint(EndpointAddress bind, bool isPublic, StartMode mode)
     : bind(bind)
     , isPublic(isPublic)
     , app(lc.loop)
 {
     spdlog::info("RPC {}endpoint is {}.", isPublic ? "public " : "", bind.to_string());
-    t = std::thread(&HTTPEndpoint::work, this);
+    if (mode == StartMode::Immediate) start();
+}
+
+void HTTPEndpoint::start()
+{
+    if (!t.joinable()) t = std::thread(&HTTPEndpoint::work, this);
 }
 
 void HTTPEndpoint::get(std::string pattern, auto asyncfun, auto serializer, bool priv)

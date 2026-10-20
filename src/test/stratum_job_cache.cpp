@@ -15,8 +15,10 @@ Block block(uint8_t previousHash, uint8_t marker)
     Header header;
     header.fill(0);
     header[0] = previousHash;
-    return { NonzeroHeight { uint32_t(1) }, header,
-        BodyContainer { std::vector<uint8_t> { marker } } };
+    std::vector<uint8_t> body(28, 0);
+    body[0] = marker;
+    return { NonzeroHeight { NEWBLOCKSTRUCUTREHEIGHT }, header,
+        BodyContainer { std::move(body) } };
 }
 }
 
@@ -32,7 +34,7 @@ int main()
     check(jobs.find("ff") != nullptr, "Same-tip job was discarded");
     check(jobs.add("ff", block(1, 99)) == nullptr, "Duplicate job was accepted");
     check(jobs.latest()->first == "00", "Duplicate feed reverted the latest job");
-    check(jobs.find("ff")->body.data()[0] == 10, "Duplicate feed replaced a job");
+    check(jobs.find("ff")->block().body.data()[0] == 10, "Duplicate feed replaced a job");
 
     check(jobs.add("80", block(1, 30)) != nullptr, "Third job was rejected");
     check(jobs.latest()->first == "80", "Arrival order was not retained");
@@ -46,6 +48,6 @@ int main()
     check(jobs.latest() == nullptr && jobs.find("40") == nullptr,
         "Clearing jobs retained a template");
     check(jobs.add("40", block(3, 50)) != nullptr, "Cleared job ID cannot be reused");
-    check(jobs.latest()->second.body.data()[0] == 50, "Reused ID returned stale data");
+    check(jobs.latest()->second.block().body.data()[0] == 50, "Reused ID returned stale data");
     std::cout << "Stratum job cache: arrival order, duplicate feeds, tip changes, and clear passed\n";
 }

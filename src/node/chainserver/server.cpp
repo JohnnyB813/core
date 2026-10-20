@@ -185,10 +185,11 @@ void ChainServer::workerfun()
             while (!haswork) {
                 cv.wait(ul);
             }
+            // Producers and close() use this same mutex for the wakeup flags.
+            haswork = false;
+            if (closing)
+                break;
         }
-        haswork = false;
-        if (closing)
-            break;
         {
             latency::Scope gc(latency::Phase::GarbageCollection);
             state.garbage_collect();

@@ -95,8 +95,10 @@ void get_janushash_number(std::string_view sv, RawCb cb)
 {
     // TODO: do header check in different thread
     Header h;
-    if (!parse_hex(sv, h))
+    if (!parse_hex(sv, h)) {
         cb({ "" });
+        return;
+    }
 
     auto double_to_string = [](double d) {
         std::string s;

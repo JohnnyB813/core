@@ -17,6 +17,7 @@ FROM python:3.14-alpine3.23 AS test-runtime
 COPY --from=build /install/usr/local/bin/wart-node /tools/wart-node
 COPY --from=build /build/src/node/node_replay /tools/node_replay
 COPY --from=build /build/src/node/node_replay_old_sqlite /tools/node_replay_old_sqlite
+COPY --from=build /build/src/node/stratum_submit_fixture /tools/stratum_submit_fixture
 COPY --from=build /build/src/test/sqlite_workload /tools/sqlite_workload
 COPY --from=build /build/src/test/sqlite_workload_old /tools/sqlite_workload_old
 COPY src/test /checks

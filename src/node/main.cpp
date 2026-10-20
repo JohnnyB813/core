@@ -106,9 +106,6 @@ int main(int argc, char** argv)
     auto cs = ChainServer::make_chain_server(db, breg, config().node.snapshotSigner);
 
     std::optional<StratumServer> stratumServer;
-    if (config().stratumPool) {
-        stratumServer.emplace(config().stratumPool->bind);
-    }
     Eventloop el(ps, *cs, config());
     Conman cm(&l, ps, config());
 
@@ -118,14 +115,17 @@ int main(int argc, char** argv)
     spdlog::debug("Starting libuv loop");
 
     // starting endpoint
-    HTTPEndpoint endpoint { config().jsonrpc.bind };
-    auto endpointPublic { HTTPEndpoint::make_public_endpoint(config()) };
+    HTTPEndpoint endpoint { config().jsonrpc.bind, false, HTTPEndpoint::StartMode::Deferred };
+    auto endpointPublic { HTTPEndpoint::make_public_endpoint(config(), HTTPEndpoint::StartMode::Deferred) };
 
     // setup globals
     global_init(&breg, &ps, &*cs, &cm, &el, &endpoint);
 
     // running eventloops
     el.start_async_loop();
+    endpoint.start();
+    if (endpointPublic) endpointPublic->start();
+    if (config().stratumPool) stratumServer.emplace(config().stratumPool->bind);
     if ((i = uv_run(&l, UV_RUN_DEFAULT)))
         goto error;
     free_signals();

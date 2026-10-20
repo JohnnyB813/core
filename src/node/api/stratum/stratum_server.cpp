@@ -40,14 +40,6 @@ namespace messages {
             , nonce(hex_to_arr<4>(params[3].get<std::string>()))
         {
         }
-        void apply_to(const std::array<uint8_t, 4>& extra2prefix, Block& b) const
-        {
-            std::copy(extra2prefix.begin(), extra2prefix.end(), b.body.data().begin());
-            std::copy(extranonce2.begin(), extranonce2.end(), b.body.data().begin() + 4);
-            b.header.set_merkleroot(b.body_view().merkle_root(b.height));
-            b.header.set_nonce(nonce);
-            b.header.set_timestamp(ntime);
-        }
         std::string jobId;
         std::array<uint8_t, 6> extranonce2;
         std::array<uint8_t, 4> ntime;
@@ -72,10 +64,11 @@ namespace messages {
         uint32_t nbits;
         uint32_t ntime;
         bool clean { false };
-        MiningNotify(std::string jobId, const Block& b, bool clean)
+        MiningNotify(std::string jobId, const Block& b, bool clean,
+            const std::vector<uint8_t>* prefix = nullptr)
             : jobId(std::move(jobId))
             , prevHash { b.header.prevhash() }
-            , merklePrefix(b.body_view().merkle_prefix())
+            , merklePrefix(prefix ? *prefix : b.body_view().merkle_prefix())
             , version(b.header.version())
             , nbits(hton32(b.header.target_v2().binary()))
             , ntime(b.header.timestamp())
@@ -245,15 +238,15 @@ void Connection::handle_message(messages::MiningSubmit&& m)
         shutdown();
         return;
     }
-    auto b { server.get_block(authorized->address, m.jobId) };
-    if (!b) {
+    const auto* job { server.get_job(authorized->address, m.jobId) };
+    if (!job) {
         write() << StratumError::JobNotFound(m.id);
         return;
     }
-    m.apply_to(extra2prefix, *b);
-    b->trace = latency::make_trace(b->height.value(), b->header.hash());
-    if (b->trace) b->trace->createdAt = messageReceivedAt;
-    put_chain_append({ std::move(*b) },
+    auto block = job->submission(extra2prefix, m.extranonce2, m.ntime, m.nonce);
+    block.trace = latency::make_trace(block.height.value(), block.header.hash());
+    if (block.trace) block.trace->createdAt = messageReceivedAt;
+    put_chain_append({ std::move(block) },
         [&, p = shared_from_this(), id = m.id](const tl::expected<void, int32_t>& res) {
             server.on_append_result({ .p = p, .stratumId = id, .result { res } });
         });
@@ -267,9 +260,17 @@ std::string prepare_work(const std::string& jobId, const Block& block, bool clea
     return lines;
 }
 
-bool Connection::send_work(std::string jobId, const Block& block, bool clean)
+std::string prepare_work(const std::string& jobId, const Job& job, bool clean)
 {
-    return send_prepared_work(prepare_work(jobId, block, clean || fresh));
+    auto lines { MiningSetDifficulty(job.block()).to_string() };
+    lines += '\n';
+    lines += MiningNotify(jobId, job.block(), clean, &job.merkle_prefix()).to_string();
+    return lines;
+}
+
+bool Connection::send_work(std::string jobId, const Job& job, bool clean)
+{
+    return send_prepared_work(prepare_work(jobId, job, clean || fresh));
 }
 
 bool Connection::send_prepared_work(const std::string& lines)
@@ -353,10 +354,9 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
 
     // register block
     auto jobId { serialize_hex(fe.t.block.header.hash()) };
-    Block* b { ad.jobs.add(jobId, std::move(fe.t.block)) };
-    if (b == nullptr)
+    const auto* job { ad.jobs.add(jobId, std::move(fe.t.block)) };
+    if (job == nullptr)
         return;
-    const auto& block { *b };
 
     auto record_write = [&](bool queued) {
         if (queued && fe.t.parentTrace) {
@@ -368,7 +368,7 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
     // Keep one-worker dispatch direct: no shared-message storage is needed.
     if (ad.connections.size() <= 1) {
         for (auto* c : ad.connections)
-            record_write(c->send_work(jobId, block, ad.clean));
+            record_write(c->send_work(jobId, *job, ad.clean));
         return;
     }
 
@@ -379,7 +379,7 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
         const bool clean = ad.clean || c->fresh;
         auto& lines = prepared[size_t(clean)];
         if (!lines)
-            lines = stratum::prepare_work(jobId, block, clean);
+            lines = stratum::prepare_work(jobId, *job, clean);
         record_write(c->send_prepared_work(*lines));
     }
 }
@@ -485,14 +485,11 @@ void StratumServer::push(Event e)
     async->send();
 }
 
-std::optional<Block> StratumServer::get_block(Address a, std::string jobId)
+const stratum::Job* StratumServer::get_job(Address a, const std::string& jobId)
 {
     auto iter = addressData.find(a);
     assert(iter != addressData.end());
-    if (auto b { iter->second.jobs.find(jobId) }; b != nullptr) {
-        return *b;
-    }
-    return {};
+    return iter->second.jobs.find(jobId);
 }
 
 void StratumServer::shutdown()

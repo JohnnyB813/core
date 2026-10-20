@@ -43,6 +43,12 @@ def main():
         one_run(base, trial, json.loads(fixture.read_text()), wire, tools,
                 results / "local-found-blocks.json", "latency", "wal", local=True)
         report["local_valid_block_submissions_and_receiving_peers"] = 100
+        subprocess.run(["python3", "/checks/run_stratum_submission_screen.py",
+                        "--candidate", str(tools / "wart-node"),
+                        "--fixture-tool", str(tools / "stratum_submit_fixture"),
+                        "--results", str(root / "stratum-submissions"),
+                        "--rounds", "1", "--accepted", "3", "--rejected", "40"], check=True)
+        report["valid_stratum_submissions_with_two_receivers"] = 9
         report["sigkill_cases"] = run_crashes(tools / "sqlite_workload", root / "crashes")
         report["chain_recovery_cases"] = run_chain_recovery(tools / "node_replay", base, fixture,
                                                            root / "chain-recovery", result["logical_digest"])

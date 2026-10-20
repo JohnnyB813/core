@@ -33,9 +33,9 @@ else
   meson setup /latency-build --default-library static --buildtype=release
 fi
 meson setup --reconfigure /latency-build -Dperformance-tools=true -Dc_link_args=-static -Dcpp_link_args=-static
-meson compile -C /latency-build -j 4 wart-node node_replay node_replay_old_sqlite sqlite_workload sqlite_workload_old custom_float stratum_job_cache stratum_preparation latency_policy journal_modes mempool_replacement mempool_reconciliation mempool_admission db_maintenance block_lookup
+meson compile -C /latency-build -j 4 wart-node node_replay node_replay_old_sqlite sqlite_workload sqlite_workload_old custom_float stratum_job_cache stratum_preparation stratum_submission stratum_submit_fixture local_correctness chain_worker latency_policy journal_modes mempool_replacement mempool_reconciliation mempool_admission db_maintenance block_lookup
 meson test -C /latency-build --no-rebuild --print-errorlogs
-cp /latency-build/src/node/wart-node /latency-build/src/node/node_replay /latency-build/src/node/node_replay_old_sqlite /latency-build/src/test/sqlite_workload /latency-build/src/test/sqlite_workload_old /code/build/ghcr-validation/bench-image/tools/
+cp /latency-build/src/node/wart-node /latency-build/src/node/node_replay /latency-build/src/node/node_replay_old_sqlite /latency-build/src/node/stratum_submit_fixture /latency-build/src/test/sqlite_workload /latency-build/src/test/sqlite_workload_old /code/build/ghcr-validation/bench-image/tools/
 """
     run(["docker", "run", "--rm", "--label", "org.codex.warthog-perf=20261018-a1",
          "--mount", f"type=bind,source={root},target=/code",
