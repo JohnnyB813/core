@@ -231,14 +231,15 @@ TxHash Chainstate::insert_tx(const TransferTxExchangeMessage& pm)
     if (pm.amount.is_zero())
         throw Error(EZEROAMOUNT);
     auto txHash { pm.txhash(*h) };
-    if (pm.from_address(txHash) == pm.toAddr)
+    const auto fromAddr { pm.from_address(txHash) };
+    if (fromAddr == pm.toAddr)
         throw Error(ESELFSEND);
 
     auto p = db.lookup_account(pm.from_id());
     if (!p)
         throw Error(EADDRIDNOTFOUND);
     TransactionHeight th(pm.pin_height(), account_height(pm.from_id()));
-     _mempool.insert_tx_throw(pm, th, txHash, *p);
+    _mempool.insert_tx_internal(pm, th, txHash, *p, &fromAddr);
     return txHash;
 }
 
@@ -265,7 +266,7 @@ TxHash Chainstate::insert_tx(const PaymentCreateMessage& m)
     if (txids().contains(pm.txid))
         throw Error(ENONCE);
     TransactionHeight th(pinHeight, account_height(accountId));
-    _mempool.insert_tx_throw(pm, th, txHash, af);
+    _mempool.insert_tx_internal(pm, th, txHash, af, &fromAddr);
     return txHash;
 }
 

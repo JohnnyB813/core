@@ -79,7 +79,57 @@ mempool_replacement = executable('mempool_replacement', vcs_dep, '../test/mempoo
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Mempool replacement accounting', mempool_replacement)
 
+admission_cpp_args = []
+admission_link_args = []
+if host_machine.system() == 'linux'
+  admission_cpp_args += ['-DCOUNT_SIGNATURE_RECOVERIES']
+  admission_link_args += ['-Wl,--wrap=secp256k1_ecdsa_recover']
+endif
+mempool_admission = executable('mempool_admission', vcs_dep, '../test/mempool_admission.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  cpp_args: admission_cpp_args,
+  link_args: admission_link_args,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Mempool admission signatures', mempool_admission,
+  args: files('../test/fixtures/genesis-mainnet.json'))
+
+stratum_preparation = executable('stratum_preparation', vcs_dep, '../test/stratum_preparation.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Stratum work preparation', stratum_preparation)
+
+db_maintenance = executable('db_maintenance', vcs_dep, '../test/db_maintenance.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Database maintenance retention and retry', db_maintenance)
+
+block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Block lookup height and identity', block_lookup,
+  args: files('../test/fixtures/genesis-mainnet.json'))
+
 if get_option('performance-tools')
+  executable('block_application_profile', vcs_dep, '../test/block_application_profile.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty],
+    link_with: lib_thirdparty,
+    cpp_args: admission_cpp_args,
+    link_args: admission_link_args,
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+  executable('stratum_fanout', vcs_dep, '../test/stratum_fanout.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty],
+    link_with: lib_thirdparty,
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
   node_replay = executable('node_replay', vcs_dep, '../test/node_replay.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],

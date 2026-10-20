@@ -5,6 +5,7 @@
 #include <set>
 namespace chainserver {
 struct TransactionIds;
+struct Chainstate;
 }
 namespace mempool {
 struct BalanceEntry {
@@ -67,6 +68,11 @@ public:
     [[nodiscard]] CompactUInt min_fee() const;
 
 private:
+    friend struct chainserver::Chainstate;
+    // Only Chainstate may supply a sender already recovered from this exact
+    // transaction and hash. Other callers recover it inside this helper.
+    void insert_tx_internal(const TransferTxExchangeMessage& pm, TransactionHeight txh,
+        const TxHash& hash, const AddressFunds& e, const Address* recoveredSender);
     using BalanceEntries = std::map<AccountId, BalanceEntry>;
     void apply_logevent(const Put&);
     void apply_logevent(const Erase&);

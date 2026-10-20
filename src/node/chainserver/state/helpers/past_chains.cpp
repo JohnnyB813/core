@@ -7,10 +7,10 @@ using namespace std::chrono;
 void BlockCache::schedule(std::variant<DiscardedStageSchedule, ChainSchedule> v,DeletionKey dk)
 {
     auto discard_at = system_clock::now() + minutes(10);
-    assert(gcSchedule.try_emplace(discard_at, 
+    gcSchedule.emplace(discard_at,
             DeleteScheduleEntry {
                         .data { std::move(v) },
-                        .deletionKey { dk } }).second);
+                        .deletionKey { dk } });
 }
 
 std::shared_ptr<Headerchain> BlockCache::add_old_chain(const Chainstate& consensus, DeletionKey dk)
@@ -56,21 +56,30 @@ void BlockCache::handle(ChainSchedule cs)
 void BlockCache::garbage_collect(ChainDB& db)
 {
     std::unique_lock l(mutex);
-    if (gcSchedule.empty())
+    const auto end = gcSchedule.upper_bound(system_clock::now());
+    if (gcSchedule.begin() == end)
         return;
 
-    auto now = std::chrono::system_clock::now();
-    for (auto iter { gcSchedule.begin() }; iter != gcSchedule.end();) {
-        auto& [t, entry] { *iter };
-        if (t > now)
-            break;
-        db.garbage_collect_blocks(entry.deletionKey);
+    // Each deletion covers a cumulative key prefix, so their union is the
+    // largest expired key even when expiration order differs from key order.
+    auto key = gcSchedule.begin()->second.deletionKey;
+    for (auto iter = gcSchedule.begin(); iter != end; ++iter) {
+        if (iter->second.deletionKey.value() > key.value())
+            key = iter->second.deletionKey;
+    }
+    auto transaction = db.transaction();
+    db.garbage_collect_blocks(key);
+    transaction.commit();
+
+    // Retire cache ownership only after the database commit succeeds. A failed
+    // delete or commit must leave every schedule available for a later retry.
+    for (auto iter = gcSchedule.begin(); iter != end; ++iter) {
         std::visit([&](auto& data) {
             handle(data);
         },
-            entry.data);
-        gcSchedule.erase(iter++);
+            iter->second.data);
     }
+    gcSchedule.erase(gcSchedule.begin(), end);
 }
 std::vector<Hash> BlockCache::get_hashes(const DescriptedBlockRange& r) const
 {

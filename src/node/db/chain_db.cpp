@@ -188,8 +188,16 @@ std::vector<BlockId> ChainDB::consensus_block_ids(Height begin,
 
 void ChainDB::garbage_collect_blocks(DeletionKey dk)
 {
-    stmtDeleteGCBlocks.run(dk.value());
-    stmtDeleteGCRefs.run(dk.value());
+    try {
+        stmtDeleteGCBlocks.run(dk.value());
+        stmtDeleteGCRefs.run(dk.value());
+    } catch (...) {
+        // sqlite3_reset also reports the previous step error. Keep the original
+        // exception while making both cached statements reusable after rollback.
+        stmtDeleteGCBlocks.tryReset();
+        stmtDeleteGCRefs.tryReset();
+        throw;
+    }
 }
 
 DeletionKey ChainDB::schedule_protected_all()
@@ -254,7 +262,7 @@ std::optional<std::pair<BlockId, Block>> ChainDB::get_block(HashView hash) const
     auto o = stmtBlockByHash.one(hash);
     if (!o.has_value())
         return {};
-    Height h { o.get<Height>(0) };
+    Height h { o.get<Height>(1) };
     if (h == 0) {
         throw std::runtime_error("Database corrupted, block has height 0");
     }

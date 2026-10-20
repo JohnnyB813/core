@@ -14,6 +14,7 @@
 #include "sha2.hpp"
 #include "sqlite3.h"
 #include "fault_vfs.hpp"
+#include "checkpoint_trace.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -89,8 +90,10 @@ int main(int argc,char** argv)
         check(journal!="wal" || sqlite3_libversion_number()>=3051003,"old SQLite comparison tool only supports DELETE");
         std::ifstream input(argv[2]); json fixture; input>>fixture;
         const char* failure=std::getenv("REPLAY_IO_FAILURE");
-        if (failure) {
+        const bool checkpointTrace = std::getenv("REPLAY_CHECKPOINT_TRACE") != nullptr;
+        if (failure || checkpointTrace) {
             fault_vfs::install();
+            if (checkpointTrace) checkpoint_trace::enable();
             sqlite3_vfs_register(&fault_vfs::wrapper,1);
         }
         std::ofstream acknowledgements;
@@ -101,6 +104,7 @@ int main(int argc,char** argv)
             (directory/"latency").string());
         json result { {"sqlite",sqlite3_libversion()},{"journal",journal},{"diagnostics",diagnostics},
             {"apply_us",json::array()},{"stage_set_us",json::array()},{"commit_us",json::array()},{"template_us",json::array()},{"processing_us",json::array()} };
+        if (checkpointTrace) result["checkpoint_copies"] = json::array();
         {
             // No external clients or peers; HTTP is only used by the ordinary state
             // publication path. The Docker runner publishes no ports.
@@ -129,6 +133,7 @@ int main(int argc,char** argv)
                 check(prepared.has_value(),"recorded header rejected by consensus verification");
                 headers.append(*prepared,registry);
                 auto began=latency::Clock::now();
+                const auto checkpointsBefore = checkpoint_trace::copies;
                 auto staged=state.set_stage(Headerchain(headers));
                 auto setEnd=latency::Clock::now();
                 check(staged.firstMissHeight.has_value(),"stage set rejected");
@@ -140,6 +145,7 @@ int main(int argc,char** argv)
                 std::vector<Block> blocks; blocks.push_back(std::move(block));
                 auto [accepted,delta]=state.add_stage(blocks,headers);
                 auto applied=latency::Clock::now();
+                if (checkpointTrace) result["checkpoint_copies"].push_back(checkpoint_trace::copies - checkpointsBefore);
                 check(!accepted.ce && delta.has_value(),"recorded block rejected by state application");
                 if (acknowledgements) {
                     acknowledgements<<state.chainlength().value()<<'\n'; acknowledgements.flush();

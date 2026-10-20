@@ -14,6 +14,7 @@ public:
     std::vector<Hash> get_hashes(const DescriptedBlockRange&) const;
 
 private:
+    friend struct BlockCacheTestAccess;
     struct Entry {
         std::shared_ptr<Headerchain> headers;
         Entry(std::shared_ptr<Headerchain> headers)
@@ -38,6 +39,6 @@ private:
     void schedule(std::variant<DiscardedStageSchedule, ChainSchedule>, DeletionKey);
 
     using tp = std::chrono::system_clock::time_point;
-    std::map<tp, DeleteScheduleEntry> gcSchedule;
+    std::multimap<tp, DeleteScheduleEntry> gcSchedule;
 };
 }

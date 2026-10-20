@@ -209,9 +209,18 @@ void Mempool::insert_tx_throw(const TransferTxExchangeMessage& pm,
     const TxHash& txhash,
     const AddressFunds& af)
 {
+    insert_tx_internal(pm, txh, txhash, af, nullptr);
+}
+
+void Mempool::insert_tx_internal(const TransferTxExchangeMessage& pm,
+    TransactionHeight txh,
+    const TxHash& txhash,
+    const AddressFunds& af,
+    const Address* recoveredSender)
+{
     if (pm.compactFee < config().node.minMempoolFee)
         throw Error(EMINFEE);
-    if (pm.from_address(txhash) != af.address)
+    if ((recoveredSender ? *recoveredSender : pm.from_address(txhash)) != af.address)
         throw Error(EFAKEACCID);
 
     if (af.funds.is_zero())

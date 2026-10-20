@@ -4,6 +4,14 @@ The native Meson suite includes `Stratum job cache`, covering arrival order,
 duplicate feeds, chain-tip changes, stale-job removal, and explicit invalidation.
 Checks remain active in release builds.
 
+`Stratum work preparation` checks both clean-flag variants, notification fields,
+framing, and template immutability. With `-Dperformance-tools=true`, the optional
+`stratum_fanout` helper and `run_stratum_preparation_screen.py` measure complete
+loopback receiver delivery and server-process CPU. The screen also checks payout
+separation, duplicate feeds, reconnects, and a paused receiver. Use it only in an
+isolated Linux network namespace; its synthetic jobs are never submitted.
+See [method, commands, and measured limits](../../doc/stratum-preparation-optimization.md).
+
 Build and test the runtime locally before publishing:
 
 ```sh
@@ -30,6 +38,21 @@ These tests use an isolated genesis testnet. They do not measure valid found-blo
 propagation, mainnet synchronization, or orphan rates.
 
 # Latency and durable SQLite tests
+
+`Block lookup height and identity` checks stored height independently of row ID,
+including reordered fixture inserts, duplicates, restart, and corrupt zero height.
+With `-Dperformance-tools=true`, `block_application_profile` and
+`run_block_application_profile.py` attribute body readback using genuinely signed
+synthetic bodies and the real block applier. This component profile excludes
+durable commit and full header/chain acceptance. See the
+[data-movement screen and limits](../../doc/block-application-data-movement.md).
+
+`Database maintenance retention and retry` checks expired-batch collection,
+protected/canonical/future retention, and retry after failed deletes and commits
+in DELETE and WAL modes. `run_db_maintenance_screen.py` performs paired disposable
+maintenance timings and genuine block replay; `REPLAY_CHECKPOINT_TRACE=1` enables
+test-only checkpoint-copy attribution in `node_replay`. See the
+[maintenance method and limits](../../doc/database-maintenance-optimization.md).
 
 The Meson suite also checks the bounded diagnostic queue, monotonic metadata,
 nested timings, miner deduplication, peer EWMA/ranking/exploration, journal

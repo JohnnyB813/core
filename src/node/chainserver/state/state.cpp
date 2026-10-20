@@ -228,9 +228,7 @@ void State::garbage_collect()
     using namespace std::chrono;
     if (auto n = steady_clock::now(); n > nextGarbageCollect) {
         nextGarbageCollect = n + minutes(5);
-        auto tr = db.transaction();
         blockCache.garbage_collect(db);
-        tr.commit();
     }
 }
 

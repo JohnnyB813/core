@@ -18,6 +18,7 @@ class tcp_handle;
 };
 class StratumServer;
 namespace stratum {
+std::string prepare_work(const std::string& jobId, const Block& block, bool clean);
 namespace messages {
     struct MiningSubscribe;
     struct MiningAuthorize;
@@ -49,6 +50,7 @@ private:
     void handle_message(messages::MiningSubmit&& m);
     void handle_message(messages::MiningAuthorize&& m);
     bool send_work(std::string jobId, const Block& block, bool clean);
+    bool send_prepared_work(const std::string& lines);
     void shutdown();
     bool write_line(const std::string& line);
     void process_line();

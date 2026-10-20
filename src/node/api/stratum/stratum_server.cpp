@@ -259,11 +259,21 @@ void Connection::handle_message(messages::MiningSubmit&& m)
         });
 }
 
-bool Connection::send_work(std::string jobId, const Block& block, bool clean)
+std::string prepare_work(const std::string& jobId, const Block& block, bool clean)
 {
     auto lines { MiningSetDifficulty(block).to_string() };
     lines += '\n';
-    lines += MiningNotify(jobId, block, clean || fresh).to_string();
+    lines += MiningNotify(jobId, block, clean).to_string();
+    return lines;
+}
+
+bool Connection::send_work(std::string jobId, const Block& block, bool clean)
+{
+    return send_prepared_work(prepare_work(jobId, block, clean || fresh));
+}
+
+bool Connection::send_prepared_work(const std::string& lines)
+{
     const bool queued = write_line(lines);
     fresh = false;
     return queued;
@@ -348,13 +358,29 @@ void StratumServer::handle_event(SubscriptionFeed&& fe)
         return;
     const auto& block { *b };
 
-    // dispatch block
-    for (auto* c : ad.connections) {
-        const bool queued = c->send_work(jobId, block, ad.clean);
+    auto record_write = [&](bool queued) {
         if (queued && fe.t.parentTrace) {
             fe.t.parentTrace->milestone(latency::Phase::MinerWriteQueued);
             fe.t.parentTrace->latest_milestone(latency::Phase::MinerLastWriteQueued);
         }
+    };
+
+    // Keep one-worker dispatch direct: no shared-message storage is needed.
+    if (ad.connections.size() <= 1) {
+        for (auto* c : ad.connections)
+            record_write(c->send_work(jobId, block, ad.clean));
+        return;
+    }
+
+    // Prepare only the flag variants actually needed by this payout's workers.
+    // write_line still gives each asynchronous socket write its own buffer.
+    std::optional<std::string> prepared[2];
+    for (auto* c : ad.connections) {
+        const bool clean = ad.clean || c->fresh;
+        auto& lines = prepared[size_t(clean)];
+        if (!lines)
+            lines = stratum::prepare_work(jobId, block, clean);
+        record_write(c->send_prepared_work(*lines));
     }
 }
 
