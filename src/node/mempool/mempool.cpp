@@ -266,7 +266,7 @@ void Mempool::insert_tx_internal(const TransferTxExchangeMessage& pm,
 
     e.lock(spend);
     auto [iter, inserted] = txs().try_emplace(pm.txid,
-        pm.reserved, pm.compactFee, pm.toAddr, pm.amount, pm.signature, txhash, txh);
+        pm.reserved, pm.compactFee, pm.toAddr, pm.amount, pm.signature, txhash, txh, af.address);
     assert(inserted);
     if (master)
         log.push_back(Put { *iter });

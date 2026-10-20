@@ -135,7 +135,7 @@ std::optional<API::Transaction> State::api_get_tx(const HashView txHash) const
             .confirmations = 0,
             .height = Height(0),
             .amount = tx.amount,
-            .fromAddress = tx.from_address(txHash),
+            .fromAddress = chainstate.mempool().verified_address(txHash),
             .fee = tx.fee(),
             .nonceId = tx.txid.nonceId,
             .pinHeight = tx.pin_height(),
@@ -525,7 +525,7 @@ auto State::apply_stage(ChainDBTransaction&& t) -> std::tuple<ChainError, std::o
     db.set_consensus_work(stage.total_work());
     auto update { tr.commit(*this) };
 
-    return { error, update, apiBlocks };
+    return { error, std::move(update), std::move(apiBlocks) };
 }
 
 auto State::apply_signed_snapshot(SignedSnapshot&& ssnew) -> std::optional<StateUpdate>
@@ -720,7 +720,7 @@ auto State::api_get_mempool(size_t n) -> API::MempoolEntries
     API::MempoolEntries out;
     for (size_t i = 0; i < hashes.size(); ++i) {
         out.entries.push_back(API::MempoolEntry {
-            entries[i], hashes[i] });
+            entries[i], hashes[i], chainstate.mempool().verified_address(hashes[i]) });
     }
     return out;
 }

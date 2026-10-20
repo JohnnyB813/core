@@ -327,7 +327,7 @@ json to_json(const API::MempoolEntries& entries)
     json a = json::array();
     for (auto& e : entries.entries) {
         json elem;
-        elem["fromAddress"] = e.from_address(e.txHash).to_string();
+        elem["fromAddress"] = e.fromAddress.to_string();
         elem["pinHeight"] = e.pin_height();
         elem["txHash"] = serialize_hex(e.txHash);
         elem["nonceId"] = e.nonce_id();

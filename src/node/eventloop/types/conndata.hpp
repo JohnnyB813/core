@@ -11,9 +11,9 @@ class Timerref {
 public:
     Timerref(Timer& t)
         : timer_iter(t.end()) {}
-    Timerref(Timer::iterator iter)
+    Timerref(Timer::Handle iter)
         : timer_iter(iter) {}
-    Timer::iterator& timer_ref() { return timer_iter; }
+    Timer::Handle& timer_ref() { return timer_iter; }
     void reset_expired(Timer& t)
     {
         assert(timer_iter != t.end());
@@ -26,10 +26,10 @@ public:
         timer_iter = t.end();
     }
     bool has_timerref(Timer& timer) { return timer_iter != timer.end(); }
-    Timer::iterator timer() { return timer_iter; }
+    Timer::Handle timer() { return timer_iter; }
 
 protected:
-    Timer::iterator timer_iter;
+    Timer::Handle timer_iter;
 };
 
 struct ConnectionJob : public Timerref {
@@ -39,7 +39,7 @@ struct ConnectionJob : public Timerref {
 
     template <typename T>
     requires std::derived_from<T, IsRequest>
-    void assign(Timer::iterator iter, Timer& t, T& req)
+    void assign(Timer::Handle iter, Timer& t, T& req)
     {
         assert(!active());
         assert(t.end() != iter);
@@ -97,7 +97,7 @@ struct ConnectionJob : public Timerref {
         return std::holds_alternative<AwaitInit>(data_v); 
     }
 
-    void restart_expired(Timer::iterator iter, Timer& t)
+    void restart_expired(Timer::Handle iter, Timer& t)
     {
         assert(timer_iter != t.end());
         timer_iter = iter;
@@ -173,14 +173,14 @@ private:
 struct Ping : public Timerref {
     Ping(Timer& end)
         : Timerref(end) {}
-    void await_pong(PingMsg msg, Timer::iterator iter)
+    void await_pong(PingMsg msg, Timer::Handle iter)
     {
         assert(!data);
         data = msg;
         timer_iter = iter;
         sentAt = latency::Clock::now();
     }
-    Timer::iterator sleep(Timer::iterator iter)
+    Timer::Handle sleep(Timer::Handle iter)
     {
         auto tmp = timer_iter;
         assert(data);

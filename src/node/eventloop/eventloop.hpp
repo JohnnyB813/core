@@ -146,7 +146,7 @@ private:
 
     ////////////////////////
     // Timer functions
-    void cancel_timer(Timer::iterator& ref);
+    void cancel_timer(Timer::Handle& ref);
     void send_ping_await_pong(Conref cr);
     void received_pong_sleep_ping(Conref cr);
     void update_wakeup();
@@ -269,7 +269,7 @@ private: // private data
     address_manager::AddressManager connections;
 
     Timer timer;
-    std::optional<Timer::iterator> wakeupTimer;
+    std::optional<Timer::Handle> wakeupTimer;
 
     // Request related
     size_t activeRequests = 0;

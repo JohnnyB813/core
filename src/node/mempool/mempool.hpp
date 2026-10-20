@@ -51,6 +51,15 @@ public:
     void erase_from_height(Height);
     void erase_before_height(Height);
 
+    // Bind the verified sender to the exact transaction: forks can reuse IDs.
+    [[nodiscard]] const Address& verified_address(HashView txHash) const
+    {
+        assert(master);
+        const auto iter = byHash.find(txHash);
+        assert(iter != byHash.end());
+        return (*iter)->second.verifiedSender;
+    }
+
     // getters
     [[nodiscard]] auto cache_validity() const { return txs.cache_validity(); }
     [[nodiscard]] auto get_payments(size_t n, NonzeroHeight height, std::vector<Hash>* hashes = nullptr) const

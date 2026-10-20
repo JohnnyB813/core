@@ -85,7 +85,7 @@ measurements; see the [qualification report](../../doc/local-correctness-and-str
 
 The offline CI runtime now includes nine accepted Stratum submissions with two
 receivers, using empty, 100-transfer and 300-transfer templates. The complete
-native suite has 20 tests. The earlier genesis socket probe remains a separate
+native suite has 25 tests when Python 3 is available. The earlier genesis socket probe remains a separate
 control for reconnects, disconnects and malformed/unknown submissions.
 
 # Mempool reconciliation regressions
@@ -104,11 +104,34 @@ valid-prefix control; rejected prefixes must leave the original state intact.
 Templates selected after reconciliation pass the ordinary body/signature checks
 inside a rolled-back test transaction.
 
+Every selected master-mempool sender is also compared with actual signature
+recovery after reconciliation. Partial-stage API snapshots check the owned sender
+against recovery across successful, rejected and committed-prefix transitions.
+
 Fixtures use public test keys, synthetic funded databases and unmined headers.
 They isolate local bookkeeping and do not establish full header/PoW or network
 compatibility. Mainnet replay and the existing peer/recovery checks remain
 separate controls. Meson gives each group a build-local HOME for its log files;
 when invoking the executable directly, use a disposable HOME as well.
+
+# API snapshot and WebSocket regressions
+
+`Mempool API snapshot ownership and senders` checks exact original JSON output
+for two funded public fixture keys, pending lookup, fee replacement, pruning and
+snapshot lifetime after deletion and overlapping transactions using a reassigned
+account ID. Each mempool entry owns the sender verified for that exact transaction.
+Linux linker instrumentation verifies that
+formatting and pending lookup perform no additional signature recovery. Admission
+and block validation retain their signature checks.
+
+`WebSocket subscribers and serialization` uses the `websocket_probe` helper and
+Python 3 with real loopback sockets. It checks append/rollback ordering, identical
+bytes at two subscribers, an unread client, eight reconnects and removal of the
+last subscriber. GCC/libstdc++ Linux linker instrumentation requires zero block/rollback
+formatter calls without subscribers and one call per event with subscribers.
+The helper binds only `127.0.0.1:34200`; it has no chain database or P2P connection.
+This tests one endpoint's subscriber guard, independently of public-listener
+event routing. Without Python 3, Meson omits this socket test.
 
 # Latency and durable SQLite tests
 

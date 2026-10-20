@@ -63,6 +63,8 @@ CompactUInt extract_fee(const nlohmann::json& json)
                 goto error;
         }
 
+        if (!fee.has_value())
+            goto error;
         auto compactFee { CompactUInt::compact(*fee) };
         bool exact = compactFee.uncompact() == *fee;
         if (!exact)

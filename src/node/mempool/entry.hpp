@@ -12,7 +12,7 @@ namespace mempool {
 struct EntryValue;
 using Entry = std::pair<TransactionId, EntryValue>;
 struct EntryValue {
-    EntryValue(NonceReserved noncep2, CompactUInt fee, Address toAddr, Funds amount, RecoverableSignature signature, Hash hash, Height transactionHeight)
+    EntryValue(NonceReserved noncep2, CompactUInt fee, Address toAddr, Funds amount, RecoverableSignature signature, Hash hash, Height transactionHeight, Address verifiedSender)
         : noncep2(noncep2)
         , fee(fee)
         , toAddr(toAddr)
@@ -20,6 +20,7 @@ struct EntryValue {
         , signature(signature)
         , hash(hash)
         , transactionHeight(transactionHeight)
+        , verifiedSender(verifiedSender)
     {
     }
     [[nodiscard]] auto spend_assert() const { return Funds::sum_assert(fee.uncompact(), amount); }
@@ -30,5 +31,6 @@ struct EntryValue {
     RecoverableSignature signature;
     Hash hash;
     Height transactionHeight; // when was the account first registered
+    Address verifiedSender; // exact sender checked when this transaction was admitted
 };
 }

@@ -21,6 +21,17 @@
 #include <stdexcept>
 
 using json = nlohmann::json;
+
+static API::MempoolEntries checked_snapshot(chainserver::State& state)
+{
+    auto snapshot = state.api_get_mempool(100);
+    for (const auto& entry : snapshot.entries) {
+        if (entry.fromAddress != entry.from_address(entry.txHash))
+            throw std::runtime_error("snapshot sender differs from signed transaction after reconciliation");
+    }
+    return snapshot;
+}
+
 static void check(bool value, const std::string& message)
 {
     if (!value) throw std::runtime_error(message);
@@ -160,6 +171,8 @@ static void same_pool(const mempool::Mempool& master, const mempool::Mempool& mi
         "master/follower transaction and fee order");
     for (size_t i = 0; i < a.size(); ++i) {
         check(a[i].txid == b[i].txid && mirror[masterHashes[i]].has_value(), "mirror ID/hash indexes");
+        check(master.verified_address(masterHashes[i]) == a[i].from_address(masterHashes[i]),
+            "verified master sender differs from signed transaction after reconciliation");
     }
 }
 
@@ -434,7 +447,7 @@ static void partial_stage_case(BatchRegistry& registry, const std::string& journ
     if (winning) {
         mirror.apply_log(update->mempoolUpdate);
         check(state.chainlength() == 1 + successes, "only valid prefix committed");
-        auto entries = state.api_get_mempool(100);
+        auto entries = checked_snapshot(state);
         check(entries.entries.size() == 1 && state.get_mempool_tx(f.transfer(small).txid).has_value(),
             "successful-prefix balances evict unaffordable transaction and retain affordable one");
         DatabaseFixture control(registry, 1, (directory.path / "control.db").string(), journal);
@@ -448,7 +461,7 @@ static void partial_stage_case(BatchRegistry& registry, const std::string& journ
         check(f.db.get_consensus_work() == originalWork
                 && state.get_headers().total_work() == originalHeaderChain.total_work(),
             "nonwinning prefix retains consensus work");
-        check(state.api_get_mempool(100).entries.size() == 2, "rejected prefix preserves pending transactions");
+        check(checked_snapshot(state).entries.size() == 2, "rejected prefix preserves pending transactions");
     }
     const auto next = (state.chainlength() + 1).nonzero_assert();
     auto task = state.mining_task(f.miner.pubkey().address());

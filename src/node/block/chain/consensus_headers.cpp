@@ -181,6 +181,7 @@ HeaderVerifier::HeaderVerifier(const Headerchain& hc, Height length)
 void HeaderVerifier::initialize(const Headerchain& hc,
     Height length)
 {
+    assert(length <= hc.length());
     finalHash = hc.hash_at(length);
 
     this->length = length;
@@ -188,21 +189,12 @@ void HeaderVerifier::initialize(const Headerchain& hc,
     // time validator
     //////////////////////////////
     timeValidator.clear();
-    // now fill timestamp vaildator
-    if (hc.incompleteBatch.size() >= timeValidator.N) {
-        for (size_t i = hc.incompleteBatch.size() - timeValidator.N;
-             i < hc.incompleteBatch.size(); ++i) {
-            timeValidator.append(hc.incompleteBatch[i].timestamp());
-        }
-    } else {
-        if (hc.completeBatches.size() > 0) {
-            const SharedBatchView& sb = hc.completeBatches.back();
-            size_t rem = timeValidator.N - hc.incompleteBatch.size();
-            for (size_t i = sb.size() - rem; i < sb.size(); ++i)
-                timeValidator.append(sb.getBatch()[i].timestamp());
-        }
-        for (size_t i = 0; i < hc.incompleteBatch.size(); ++i)
-            timeValidator.append(hc.incompleteBatch[i].timestamp());
+    // Rebuild the window ending at the requested prefix, including its last header.
+    if (length != 0) {
+        const auto first = length.value() > timeValidator.N
+            ? length.value() - timeValidator.N + 1 : 1;
+        for (auto h = NonzeroHeight(first); h <= length; ++h)
+            timeValidator.append(hc[h].timestamp());
     }
 
     //////////////////////////////

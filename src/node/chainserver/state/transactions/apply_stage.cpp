@@ -49,7 +49,7 @@ ApplyStageTransaction::ApplyStageTransaction(const State& s, ChainDBTransaction&
             res.newTxIds = ba.move_new_txids();
             // The successfully applied prefix may still win and be committed.
             res.balanceUpdates = ba.move_balance_updates();
-            return { apiBlocks, { e, h } };
+            return { std::move(apiBlocks), { e, h } };
         }
         res.newHistoryOffsets.push_back(historyId);
         res.newAccountOffsets.push_back(accountId);
@@ -57,7 +57,7 @@ ApplyStageTransaction::ApplyStageTransaction(const State& s, ChainDBTransaction&
     }
     res.newTxIds = ba.move_new_txids();
     res.balanceUpdates = ba.move_balance_updates();
-    return { apiBlocks, { Error(0), (ccs.stage.length() + 1).nonzero_assert() } };
+    return { std::move(apiBlocks), { Error(0), (ccs.stage.length() + 1).nonzero_assert() } };
 }
 
 void ApplyStageTransaction::consider_rollback(Height shrinkLength)

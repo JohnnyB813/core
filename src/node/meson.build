@@ -127,6 +127,34 @@ mempool_admission = executable('mempool_admission', vcs_dep, '../test/mempool_ad
 test('Mempool admission signatures', mempool_admission,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
+mempool_api_snapshot = executable('mempool_api_snapshot', vcs_dep, '../test/mempool_api_snapshot.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  cpp_args: admission_cpp_args, link_args: admission_link_args,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Mempool API snapshot ownership and senders', mempool_api_snapshot,
+  args: files('../test/fixtures/genesis-mainnet.json'))
+
+websocket_cpp_args = []
+websocket_link_args = []
+if host_machine.system() == 'linux' and meson.get_compiler('cpp').get_id() == 'gcc'
+  # These two return-value ABI tags are specific to GCC/libstdc++.
+  websocket_cpp_args = ['-DCOUNT_WEBSOCKET_FORMATS']
+  websocket_link_args = ['-Wl,--wrap=_ZN7jsonmsg7to_jsonB5cxx11ERKN3API5BlockE',
+    '-Wl,--wrap=_ZN7jsonmsg7to_jsonB5cxx11ERKN3API8RollbackE']
+endif
+websocket_probe = executable('websocket_probe', vcs_dep, '../test/websocket_probe.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  cpp_args: websocket_cpp_args, link_args: websocket_link_args,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test_python = import('python').find_installation('python3', required: false)
+if test_python.found()
+  test('WebSocket subscribers and serialization', test_python,
+    args: [files('../test/websocket_subscribers.py'), websocket_probe,
+      files('../test/fixtures/genesis-mainnet.json')], timeout: 60)
+endif
+
 stratum_preparation = executable('stratum_preparation', vcs_dep, '../test/stratum_preparation.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
@@ -162,6 +190,14 @@ block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Block lookup height and identity', block_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
+
+foreach group : ['http_payment_parsing', 'header_verifier', 'timer_handles']
+  correctness = executable(group, vcs_dep, '../test/' + group + '.cpp',
+    objects: node_runtime.extract_objects(node_source_files),
+    include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+    dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+  test('Mainnet correctness ' + group, correctness)
+endforeach
 
 if get_option('performance-tools')
   submit_profile_sources = []

@@ -599,7 +599,7 @@ void Eventloop::received_pong_sleep_ping(Conref c)
 void Eventloop::update_wakeup()
 {
     auto wakeupTime = connections.wakeup_time();
-    if (wakeupTimer && (wakeupTime == (*wakeupTimer)->first))
+    if (wakeupTimer && (wakeupTime == (*wakeupTimer)->deadline))
         return; // no change
     if (wakeupTimer) {
         timer.cancel(*wakeupTimer);
@@ -1048,7 +1048,7 @@ void Eventloop::process_blockdownload_stage()
 {
     auto r { blockDownload.pop_stage() };
     if (r)
-        stateServer.async_stage_request(*r);
+        stateServer.async_stage_request(std::move(*r));
 }
 
 void Eventloop::async_stage_action(stage_operation::Result r)
@@ -1056,7 +1056,7 @@ void Eventloop::async_stage_action(stage_operation::Result r)
     defer(std::move(r));
 }
 
-void Eventloop::cancel_timer(Timer::iterator& ref)
+void Eventloop::cancel_timer(Timer::Handle& ref)
 {
     timer.cancel(ref);
     ref = timer.end();

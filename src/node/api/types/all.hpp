@@ -123,6 +123,7 @@ struct Richlist {
 };
 struct MempoolEntry : public TransferTxExchangeMessage {
     Hash txHash;
+    Address fromAddress;
 };
 struct MempoolEntries {
     std::vector<MempoolEntry> entries;

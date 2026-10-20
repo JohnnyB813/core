@@ -367,6 +367,8 @@ void HTTPEndpoint::on_event(WebsocketEvent&& e)
 
 void HTTPEndpoint::handle_event(const API::Block& b)
 {
+    if (app.numSubscribers(b.WEBSOCKET_EVENT) == 0)
+        return;
     auto txt { nlohmann::json {
         { "type", "blockAppend" },
         { "data", jsonmsg::to_json(b) } }
@@ -376,6 +378,8 @@ void HTTPEndpoint::handle_event(const API::Block& b)
 
 void HTTPEndpoint::handle_event(const API::Rollback& r)
 {
+    if (app.numSubscribers(r.WEBSOCKET_EVENT) == 0)
+        return;
     auto txt { nlohmann::json {
         { "type", "rollback" },
         { "data", jsonmsg::to_json(r) } }
