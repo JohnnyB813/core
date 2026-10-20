@@ -135,6 +135,10 @@ event routing. Without Python 3, Meson omits this socket test.
 
 # Latency and durable SQLite tests
 
+The offline replay helper binds a kernel-assigned loopback port because it has
+no HTTP clients. CI occupies the former fixed port during genesis replay to
+regress collisions with client sockets and later recovery workers.
+
 `Block lookup height and identity` checks stored height independently of row ID,
 including reordered fixture inserts, duplicates, restart, and corrupt zero height.
 With `-Dperformance-tools=true`, `block_application_profile` and

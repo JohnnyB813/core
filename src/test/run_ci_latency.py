@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import shutil
+import socket
 
 from crash_runtime import run_crashes
 from chain_recovery import run_chain_recovery
@@ -29,7 +30,12 @@ def main():
         results = root / "results"; results.mkdir()
         env = dict(os.environ, HOME=str(trial))
         replay = results / "genesis-replay.json"
-        subprocess.run([str(tools / "node_replay"), str(trial), str(fixture), "wal", "summary", str(replay)], env=env, check=True)
+        # The replay helper has no HTTP clients. Keep its former fixed port
+        # occupied to catch accidental dependence on that port returning.
+        with socket.socket() as occupied_replay_port:
+            occupied_replay_port.bind(("127.0.0.1", 33000))
+            occupied_replay_port.listen()
+            subprocess.run([str(tools / "node_replay"), str(trial), str(fixture), "wal", "summary", str(replay)], env=env, check=True)
         result = json.loads(replay.read_text())
         assert result["height"] == 100 and result["sqlite"] == "3.54.1"
         # The first 100 mainnet blocks predate the hard-coded mainnet header

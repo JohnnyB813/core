@@ -107,8 +107,10 @@ int main(int argc,char** argv)
         if (checkpointTrace) result["checkpoint_copies"] = json::array();
         {
             // No external clients or peers; HTTP is only used by the ordinary state
-            // publication path. The Docker runner publishes no ports.
-            HTTPEndpoint endpoint(EndpointAddress("127.0.0.1:33000"));
+            // publication path. Let the kernel choose a free port so client
+            // TIME_WAIT sockets cannot block later crash/recovery workers.
+            // The Docker runner publishes no ports.
+            HTTPEndpoint endpoint(EndpointAddress("127.0.0.1:0"));
             global_init(nullptr,nullptr,nullptr,nullptr,nullptr,&endpoint);
             ChainDB db((directory/"chain.db").string(),journal);
             BatchRegistry registry;

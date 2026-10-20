@@ -210,7 +210,7 @@ sampling and no recorded health failures; the deadline was neither reset nor ext
 | Connected peers | 15 to 36, with 33 at the end. Every sample reached at least the best connected peer's advertised height and cumulative work. |
 | HTTP and Stratum | Both HTTP listeners remained consistent and responsive, with two current Stratum jobs in every sample. No RPC or job-check errors. |
 | Process and logs | Same PID 14 and process start ticks throughout; zero container restarts or OOM events, and no error-level logs, assertions or database errors. Two chain rollback messages occurred without health failures or unresolved lag. |
-| Binary and source | Source artifact and running executable retained SHA-256 `1346d1c1a37952619cfc72d8b02b6e3b9a2b87e75c3a8e8ba23688444cb270ae`. All 303 recorded source-file hashes still match the qualified build. |
+| Binary and source | Source artifact and running executable retained SHA-256 `1346d1c1a37952619cfc72d8b02b6e3b9a2b87e75c3a8e8ba23688444cb270ae`. At the final checkpoint, all 303 recorded source-file hashes matched the qualified build. |
 | Node memory | RSS rose from 491.5 to 494.0 MiB, peaking at 494.4 MiB: 2.5 MiB net growth over the hour. |
 | Node CPU | 18.98 CPU-seconds between the first and last samples, about 0.53% of one core on average. |
 
