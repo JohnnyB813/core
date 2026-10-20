@@ -47,6 +47,8 @@ ApplyStageTransaction::ApplyStageTransaction(const State& s, ChainDBTransaction&
             std::ofstream f(fname);
             f << serialize_hex(b.body.data());
             res.newTxIds = ba.move_new_txids();
+            // The successfully applied prefix may still win and be committed.
+            res.balanceUpdates = ba.move_balance_updates();
             return { apiBlocks, { e, h } };
         }
         res.newHistoryOffsets.push_back(historyId);

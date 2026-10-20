@@ -37,6 +37,28 @@ logging in and publishing. The publish build reuses the tested build layers.
 These tests use an isolated genesis testnet. They do not measure valid found-block
 propagation, mainnet synchronization, or orphan rates.
 
+# Mempool reconciliation regressions
+
+The native `mempool_reconciliation` executable provides five default Meson groups:
+`append-single`, `append-multi`, `fork-expiry`, `fork-balances`, and `partial-stage`.
+They cover confirmed reservations, actual balance-driven eviction, exact remaining
+balances, longer/shorter replacement chains, pin-window boundaries, expired and
+confirmed rollback transactions, and master/follower log and mining-body equality.
+
+Partial-stage cases run in DELETE and WAL modes with real signatures and normal
+body application. They cover balance, signature and duplicate-ID failures after
+valid prefixes, a winning fork prefix, a nonwinning fork and failure before any
+valid block. Committed ledger/history/undo/work results are compared with a
+valid-prefix control; rejected prefixes must leave the original state intact.
+Templates selected after reconciliation pass the ordinary body/signature checks
+inside a rolled-back test transaction.
+
+Fixtures use public test keys, synthetic funded databases and unmined headers.
+They isolate local bookkeeping and do not establish full header/PoW or network
+compatibility. Mainnet replay and the existing peer/recovery checks remain
+separate controls. Meson gives each group a build-local HOME for its log files;
+when invoking the executable directly, use a disposable HOME as well.
+
 # Latency and durable SQLite tests
 
 `Block lookup height and identity` checks stored height independently of row ID,

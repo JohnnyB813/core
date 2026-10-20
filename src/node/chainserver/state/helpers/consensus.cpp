@@ -46,9 +46,18 @@ void Chainstate::fork(Chainstate::ForkData&& fd)
     accountOffsets.append_vector(fd.appendResult.newAccountOffsets);
     assert_equal_length();
 
+    // Keep confirmed IDs unchanged, but release their mempool reservations
+    // before applying the final balances of the replacement chain.
+    chainTxIds = std::move(fd.rollbackResult.chainTxIds);
+    chainTxIds.merge(std::move(fd.appendResult.newTxIds));
+
     //////////////////////////////
-    // erase mempool after rollback height
+    // Remove invalidated, expired and confirmed pending transactions first.
     _mempool.erase_from_height(forkHeight);
+    const auto minPinHeight { (length() + 1).pin_begin() };
+    _mempool.erase_before_height(minPinHeight);
+    for (const auto& tid : chainTxIds)
+        _mempool.erase(tid);
 
     //////////////////////////////
     // inform mempool about balance changes
@@ -61,27 +70,20 @@ void Chainstate::fork(Chainstate::ForkData&& fd)
     // insert transactions into mempool
     AccountCache accountCache(db);
     for (auto& tx : fd.rollbackResult.toMempool) {
+        PinHeight ph { tx.pin_height() };
+        assert(ph <= forkHeight - 1);
+        if (ph < minPinHeight || chainTxIds.contains(tx.txid))
+            continue;
+
         AccountId fromId { tx.from_id() };
         auto& from { accountCache[fromId] };
 
-        PinHeight ph { tx.pin_height() };
-        assert(ph <= forkHeight - 1);
         Hash hash { headers().hash_at(ph) };
         TxHash txhash { tx.txhash(hash) };
 
-        if (!fd.appendResult.newTxIds.contains(tx.txid)) {
-            TransactionHeight txh { ph, account_height(fromId) };
-            _mempool.insert_tx(tx, txh, txhash, from);
-        }
+        TransactionHeight txh { ph, account_height(fromId) };
+        _mempool.insert_tx(tx, txh, txhash, from);
     }
-
-    // set transaction ids
-    chainTxIds = std::move(fd.rollbackResult.chainTxIds);
-    chainTxIds.merge(std::move(fd.appendResult.newTxIds));
-
-    // remove from mempool (do FULL scan)
-    for (auto& tid : chainTxIds)
-        _mempool.erase(tid);
 
     // prune transaction ids
     prune_txids();
@@ -157,19 +159,17 @@ auto Chainstate::append(AppendMulti ad) -> HeaderchainAppend
     accountOffsets.append_vector(ad.appendResult.newAccountOffsets);
     assert_equal_length();
 
-    //////////////////////////////
-    // inform mempool about balance changes
-    auto& balanceUpdates { ad.appendResult.balanceUpdates };
-    for (auto& [accountId, balance] : balanceUpdates)
-        _mempool.set_balance(accountId, balance);
-
     // remove from mempool
     // remove outdated transactions
-    auto nextBlockPinBegin { (ad.patchedChain.length() + 1).pin_begin() };
+    auto nextBlockPinBegin { (length() + 1).pin_begin() };
     _mempool.erase_before_height(nextBlockPinBegin);
     // remove used transactions
     for (const auto& tid : ad.appendResult.newTxIds)
         _mempool.erase(tid);
+
+    // Confirmed transactions no longer reserve any of these final balances.
+    for (auto& [accountId, balance] : ad.appendResult.balanceUpdates)
+        _mempool.set_balance(accountId, balance);
 
     // merge transaction ids
     chainTxIds.merge(std::move(ad.appendResult.newTxIds));
@@ -191,12 +191,6 @@ auto Chainstate::append(AppendSingle d) -> HeaderchainAppend
     accountOffsets.append(d.newAccountOffset);
     assert_equal_length();
 
-    //////////////////////////////
-    // inform mempool about balance changes
-    auto& balanceUpdates { d.balanceUpdates };
-    for (auto& [accountId, balance] : balanceUpdates)
-        _mempool.set_balance(accountId, balance);
-
     // remove from mempool
     // remove outdated transactions
     auto nextBlockPinBegin { (l + 1).pin_begin() };
@@ -204,6 +198,10 @@ auto Chainstate::append(AppendSingle d) -> HeaderchainAppend
     // remove used transactions
     for (auto& tid : d.newTxIds)
         _mempool.erase(tid);
+
+    // Confirmed transactions no longer reserve any of these final balances.
+    for (auto& [accountId, balance] : d.balanceUpdates)
+        _mempool.set_balance(accountId, balance);
 
     // merge transaction ids
     chainTxIds.merge(std::move(d.newTxIds));

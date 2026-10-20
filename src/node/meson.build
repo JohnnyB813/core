@@ -79,6 +79,16 @@ mempool_replacement = executable('mempool_replacement', vcs_dep, '../test/mempoo
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Mempool replacement accounting', mempool_replacement)
 
+mempool_reconciliation = executable('mempool_reconciliation', vcs_dep, '../test/mempool_reconciliation.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+foreach group : ['append-single', 'append-multi', 'fork-expiry', 'fork-balances', 'partial-stage']
+  test('Mempool reconciliation ' + group, mempool_reconciliation, args: [group], timeout: 120,
+    env: {'HOME': meson.current_build_dir() / 'reconciliation-home' / group})
+endforeach
+
 admission_cpp_args = []
 admission_link_args = []
 if host_machine.system() == 'linux'
