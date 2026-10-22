@@ -408,7 +408,8 @@ void Eventloop::update_chain(RollbackData&& rd)
             c.send(*msg);
         }
     }
-    headerDownload.on_signed_snapshot_update();
+    for (const auto& offender : headerDownload.on_signed_snapshot_update())
+        close(offender);
 
     // update stage
     if (!rd.signedSnapshot.compatible(chains.stage_headers())) {
@@ -430,7 +431,8 @@ void Eventloop::coordinate_sync()
     auto cons { chains.consensus_state().headers().total_work() };
     auto blk { blockDownload.get_reachable_totalwork() };
     auto max { std::max(cons, blk) };
-    headerDownload.set_min_worksum(max);
+    for (const auto& offender : headerDownload.set_min_worksum(max))
+        close(offender);
     blockDownload.set_min_worksum(cons);
 }
 
@@ -443,7 +445,10 @@ void Eventloop::try_start_sync_timing()
 
 void Eventloop::initialize_block_download()
 {
-    if (auto d { headerDownload.pop_data() }; d) {
+    std::vector<ChainOffender> headerOffenders;
+    if (auto d { headerDownload.pop_data(headerOffenders) }; d) {
+        for (const auto& offender : headerOffenders)
+            close(offender);
         auto offenders = blockDownload.init(std::move(*d));
         for (ChainOffender& o : offenders) {
             close(o);
@@ -899,7 +904,8 @@ void Eventloop::erase_internal(Conref c, Error error)
     timerSystem.erase(c.ping().timer);
     timerSystem.erase(c.job().timer);
     c->throttleQueue.reset_timer(timerSystem);
-    if (headerDownload.erase(c) && !closeReason) {
+    std::vector<ChainOffender> headerOffenders;
+    if (headerDownload.erase(c, headerOffenders) && !closeReason) {
         spdlog::info("Connected to {} peers (disconnected {}, {} reason: {})",
             headerDownload.size(), c.peer().to_string(), c.version().to_string(), Error(error).err_name());
         emit_disconnect(headerDownload.size(), c.id());
@@ -908,6 +914,8 @@ void Eventloop::erase_internal(Conref c, Error error)
         coordinate_sync();
     rtc.erase(c);
     connections.erase(c.iterator());
+    for (const auto& offender : headerOffenders)
+        close(offender);
     if (doRequests) {
         do_requests();
     }
@@ -1193,7 +1201,10 @@ void Eventloop::handle_msg(Conref c, InitMsgV1&& m)
     if (!c.protocol().v1() && !c.protocol().v2()) // must have at least version 3 for this message type
         throw Error(EINITV1);
     c->chain.initialize(m, chains);
-    headerDownload.insert(c);
+    for (const auto& offender : headerDownload.insert(c))
+        close(offender);
+    if (c->c->eventloop_erased)
+        return;
     blockDownload.insert(c);
     emit_connect(headerDownload.size(), c);
     spdlog::info("Connected to {} peers (new peer {}, {})", headerDownload.size(), c.peer().to_string(), c.version().to_string());
@@ -1218,7 +1229,10 @@ void Eventloop::handle_msg(Conref c, InitMsgV3&& m)
     c.job().reset_notexpired<AwaitInit>(timerSystem);
     c->rtcState.enanabled = m.rtc_enabled();
     c->chain.initialize(m, chains);
-    headerDownload.insert(c);
+    for (const auto& offender : headerDownload.insert(c))
+        close(offender);
+    if (c->c->eventloop_erased)
+        return;
     blockDownload.insert(c);
     emit_connect(headerDownload.size(), c);
     spdlog::info("Connected to {} peers (new peer {}, {})", headerDownload.size(), c.peer().to_string(), c.version().to_string());
@@ -1238,7 +1252,10 @@ void Eventloop::handle_msg(Conref cr, AppendMsg&& m)
 {
     log_communication("{} handle append", cr.str());
     cr->chain.on_peer_append(m, chains);
-    headerDownload.on_append(cr);
+    for (const auto& offender : headerDownload.on_append(cr))
+        close(offender);
+    if (cr->c->eventloop_erased)
+        return;
     blockDownload.on_append(cr);
     do_requests();
 }
@@ -1248,7 +1265,10 @@ void Eventloop::handle_msg(Conref c, SignedPinRollbackMsg&& m)
     log_communication("{} handle rollback ", c.str());
     verify_rollback(c, m);
     c->chain.on_peer_shrink(m, chains);
-    headerDownload.on_rollback(c);
+    for (const auto& offender : headerDownload.on_rollback(c))
+        close(offender);
+    if (c->c->eventloop_erased)
+        return;
     blockDownload.on_rollback(c);
     do_requests();
 }
@@ -1257,7 +1277,10 @@ void Eventloop::handle_msg(Conref c, ForkMsg&& m)
 {
     log_communication("{} handle fork", c.str());
     c->chain.on_peer_fork(m, chains);
-    headerDownload.on_fork(c);
+    for (const auto& offender : headerDownload.on_fork(c))
+        close(offender);
+    if (c->c->eventloop_erased)
+        return;
     blockDownload.on_fork(c);
     do_requests();
 }

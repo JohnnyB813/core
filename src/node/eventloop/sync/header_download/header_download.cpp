@@ -168,7 +168,7 @@ bool Downloader::valid_shared_batch(const SharedBatch& sb)
     return true;
 }
 
-bool Downloader::consider_insert_leader(Conref cr)
+bool Downloader::consider_insert_leader(Conref cr, std::vector<ChainOffender>& offenders)
 {
     auto pos { leaderList.end() };
     if (!can_insert_leader(cr))
@@ -190,6 +190,13 @@ bool Downloader::consider_insert_leader(Conref cr)
     auto pd { (bl > cl)
             ? ProbeData { cr.chain().stage_fork_range(), chains.stage_pin() }
             : ProbeData { cr.chain().consensus_fork_range(), chains.consensus_pin() } };
+
+    // A peer claiming more work must have headers beyond our known common fork.
+    if (sn.length < pd.fork_range().lower()) {
+        if (flag_connection(cr))
+            offenders.push_back({ { EFAKEWORK, sn.length }, cr });
+        return false;
+    }
 
     Lead_iter li;
     if (pin.valid()) {
@@ -678,11 +685,11 @@ auto Downloader::on_response(Conref cr, HeaderRequest&& req, Batch&& res) -> std
     if (minWorkSnapshot != minWork) {
         prune_leaders();
     }
-    select_leaders();
+    select_leaders(ret);
     return ret;
 }
 
-[[nodiscard]] std::optional<std::tuple<LeaderInfo, Headerchain>> Downloader::pop_data()
+[[nodiscard]] std::optional<std::tuple<LeaderInfo, Headerchain>> Downloader::pop_data(std::vector<ChainOffender>& offenders)
 {
     if (!has_data()) {
         return {};
@@ -691,7 +698,7 @@ auto Downloader::on_response(Conref cr, HeaderRequest&& req, Batch&& res) -> std
 
     Headerchain chain { m.headers };
     assert(chain.total_work() == m.worksum);
-    set_min_worksum(chain.total_work());
+    offenders = set_min_worksum(chain.total_work());
 
     return std::tuple<LeaderInfo, Headerchain> { maximizer->leaderInfo, chain };
 }
@@ -701,7 +708,7 @@ bool Downloader::has_data() const
     return maximizer.has_value() && maximizer->worksum > minWork;
 }
 
-bool Downloader::erase(Conref cr)
+bool Downloader::erase(Conref cr, std::vector<ChainOffender>& offenders)
 {
     if(! std::erase(connections, cr))
         return false;
@@ -712,7 +719,7 @@ bool Downloader::erase(Conref cr)
     const auto& leaderIter = data(cr).leaderIter;
     if (leaderIter != leaderList.end()) {
         erase_leader(leaderIter);
-        select_leaders();
+        select_leaders(offenders);
     }
     if (data(cr).jobPtr) {
         data(cr).jobPtr->cr.reset();
@@ -721,21 +728,23 @@ bool Downloader::erase(Conref cr)
     return true;
 }
 
-void Downloader::select_leaders()
+void Downloader::select_leaders(std::vector<ChainOffender>& offenders)
 {
     if (leaderList.size() >= maxLeaders)
         return;
     for (auto cr : connections) {
-        if (consider_insert_leader(cr)
+        if (consider_insert_leader(cr, offenders)
             && leaderList.size() >= maxLeaders)
             return;
     }
 }
 
-void Downloader::insert(Conref cr)
+std::vector<ChainOffender> Downloader::insert(Conref cr)
 {
     connections.push_back(cr);
-    consider_insert_leader(cr);
+    std::vector<ChainOffender> offenders;
+    consider_insert_leader(cr, offenders);
+    return offenders;
 }
 
 std::vector<ChainOffender> Downloader::on_rogue_header(const RogueHeaderData& hhw)
@@ -750,7 +759,7 @@ std::vector<ChainOffender> Downloader::on_rogue_header(const RogueHeaderData& hh
             } else
                 ++li;
         }
-        select_leaders();
+        select_leaders(res);
     }
     return res;
 }
@@ -778,15 +787,17 @@ bool Downloader::has_header(LeaderNode& ln, HeightHeader hh)
     return false;
 }
 
-void Downloader::set_min_worksum(const Worksum& ws)
+std::vector<ChainOffender> Downloader::set_min_worksum(const Worksum& ws)
 {
+    std::vector<ChainOffender> offenders;
     if (minWork != ws) {
         spdlog::debug("Set downloader minWork = {}", ws.getdouble());
         rogueHeaders.prune(ws);
         minWork = ws;
         prune_leaders();
-        select_leaders();
+        select_leaders(offenders);
     }
+    return offenders;
 }
 
 void Downloader::prune_leaders()
@@ -806,25 +817,31 @@ void Downloader::prune_leaders()
     }
 }
 
-void Downloader::on_append(Conref cr)
+std::vector<ChainOffender> Downloader::on_append(Conref cr)
 {
-    consider_insert_leader(cr);
+    std::vector<ChainOffender> offenders;
+    consider_insert_leader(cr, offenders);
+    return offenders;
 }
 
-void Downloader::on_fork(Conref cr)
+std::vector<ChainOffender> Downloader::on_fork(Conref cr)
 {
-    consider_insert_leader(cr);
+    std::vector<ChainOffender> offenders;
+    consider_insert_leader(cr, offenders);
+    return offenders;
 }
 
-void Downloader::on_rollback(Conref c)
+std::vector<ChainOffender> Downloader::on_rollback(Conref c)
 {
     if (is_leader(c))
         erase_leader(data(c).leaderIter);
 
-    consider_insert_leader(c);
+    std::vector<ChainOffender> offenders;
+    consider_insert_leader(c, offenders);
+    return offenders;
 }
 
-void Downloader::on_signed_snapshot_update()
+std::vector<ChainOffender> Downloader::on_signed_snapshot_update()
 {
     if (maximizer.has_value()) {
         // verify
@@ -834,7 +851,9 @@ void Downloader::on_signed_snapshot_update()
         };
     }
     prune_leaders();
-    select_leaders();
+    std::vector<ChainOffender> offenders;
+    select_leaders(offenders);
+    return offenders;
 }
 
 }

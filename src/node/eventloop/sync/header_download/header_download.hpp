@@ -221,16 +221,16 @@ public:
         , minWork(minWork)
     {
     }
-    void set_min_worksum(const Worksum& ws);
+    [[nodiscard]] std::vector<ChainOffender> set_min_worksum(const Worksum& ws);
 
     // peer message callbacks
-    void on_append(Conref cr);
-    void on_fork(Conref cr);
-    void on_rollback(Conref cr);
+    [[nodiscard]] std::vector<ChainOffender> on_append(Conref cr);
+    [[nodiscard]] std::vector<ChainOffender> on_fork(Conref cr);
+    [[nodiscard]] std::vector<ChainOffender> on_rollback(Conref cr);
 
-    void on_signed_snapshot_update();
-    void insert(Conref cr);
-    bool erase(Conref cr);
+    [[nodiscard]] std::vector<ChainOffender> on_signed_snapshot_update();
+    [[nodiscard]] std::vector<ChainOffender> insert(Conref cr);
+    bool erase(Conref cr, std::vector<ChainOffender>& offenders);
 
     auto leaders_end() { return leaderList.end(); }
 
@@ -241,14 +241,14 @@ public:
     void on_proberep(Conref c, const Proberequest& req, const ProberepMsg&);
     void on_probe_request_expire(Conref cr);
     [[nodiscard]] std::vector<ChainOffender> on_response(Conref cr, HeaderRequest&&, Batch&&);
-    [[nodiscard]] std::optional<std::tuple<LeaderInfo, Headerchain>> pop_data();
+    [[nodiscard]] std::optional<std::tuple<LeaderInfo, Headerchain>> pop_data(std::vector<ChainOffender>& offenders);
 
 private:
     bool do_exclusive_final_requests(RequestSender&);
     std::vector<ChainOffender> do_shared_grid_requests(RequestSender&);
 
     bool has_data() const;
-    void select_leaders();
+    void select_leaders(std::vector<ChainOffender>& offenders);
 
     void process_final(Lead_iter, std::vector<Offender>& out);
 
@@ -273,7 +273,7 @@ private:
     // leader related functions
     void erase_leader(Lead_iter);
     void queue_requests(Lead_iter);
-    bool consider_insert_leader(Conref cr); // returns true if has effect
+    bool consider_insert_leader(Conref cr, std::vector<ChainOffender>& offenders); // returns true if has effect
     bool can_insert_leader(Conref cr);
 
     bool valid_shared_batch(const SharedBatch&);
