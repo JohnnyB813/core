@@ -46,16 +46,18 @@ def main():
                            "--rpc=127.0.0.1:3000", "--enable-public", "--stratum=127.0.0.1:3456",
                            "--connect=127.0.0.1:9187").stdout.strip()
         docker("start", container)
-        result = docker("run", "--rm", "--network", "container:" + container,
-                        "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-                        "--mount", f"type=bind,source={tests},target=/checks,readonly",
-                        args.probe_image, "python3", "/checks/stratum_runtime.py", check=False)
-        print(result.stdout, end="")
-        if result.returncode:
-            print(result.stderr, end="")
-            logs = docker("logs", "--tail", "20", container, check=False)
-            print(logs.stdout + logs.stderr, end="")
-        return result.returncode
+        for probe in ("stratum_runtime.py", "input_bounds_runtime.py"):
+            result = docker("run", "--rm", "--network", "container:" + container,
+                            "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+                            "--mount", f"type=bind,source={tests},target=/checks,readonly",
+                            args.probe_image, "python3", "/checks/" + probe, check=False)
+            print(result.stdout, end="")
+            if result.returncode:
+                print(result.stderr, end="")
+                logs = docker("logs", "--tail", "20", container, check=False)
+                print(logs.stdout + logs.stderr, end="")
+                return result.returncode
+        return 0
     finally:
         if container and owned("container", container, run_id):
             docker("stop", "--time", "10", container)

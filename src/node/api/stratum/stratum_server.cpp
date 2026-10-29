@@ -203,17 +203,28 @@ Connection::Connection(std::shared_ptr<uvw::tcp_handle> newHandle, StratumServer
 }
 void Connection::on_message(std::string_view msg)
 {
+    constexpr size_t maxLineSize = 8 * 1024;
+    const auto append = [this](std::string_view part) {
+        if (part.size() > maxLineSize - stratumLine.size()) {
+            stratumLine.clear();
+            handle->close();
+            return false;
+        }
+        stratumLine.append(part);
+        return true;
+    };
     const auto arrived = latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
     size_t lower = 0;
     for (size_t i = 0; i < msg.size(); ++i) {
         if (msg[i] == '\n') {
-            stratumLine += msg.substr(lower, i - lower);
+            if (!append(msg.substr(lower, i - lower)))
+                return;
             lower = i + 1;
             messageReceivedAt = arrived;
             process_line();
         }
     }
-    stratumLine += msg.substr(lower, msg.size() - lower);
+    append(msg.substr(lower, msg.size() - lower));
 };
 
 void Connection::on_append_result(int64_t stratumId, tl::expected<void, int32_t> result)

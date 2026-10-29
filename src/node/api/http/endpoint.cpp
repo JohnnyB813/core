@@ -130,7 +130,7 @@ void HTTPEndpoint::work()
     });
 
     indexGenerator.section("Transaction Endpoints");
-    post("/transaction/add", parse_payment_create, put_mempool);
+    post("/transaction/add", parse_payment_create, put_mempool, 8 * 1024);
     get("/transaction/mempool", get_mempool);
     get_1("/transaction/lookup/:txid", lookup_tx);
     get("/transaction/latest", get_latest_transactions);
@@ -151,7 +151,7 @@ void HTTPEndpoint::work()
     get("/chain/txcache", get_txcache);
     get_1("/chain/hashrate/:window", get_hashrate_n);
     get_3("/chain/hashrate/chart/:from/:to/:window", get_hashrate_chart, true);
-    post("/chain/append", parse_mining_task, put_chain_append, true);
+    post("/chain/append", parse_mining_task, put_chain_append, 128 * 1024, true);
 
     indexGenerator.section("Account Endpoints");
     get_1("/account/:account/balance", get_account_balance);
@@ -311,19 +311,28 @@ void HTTPEndpoint::get_3(std::string pattern, auto asyncfun, bool priv)
         });
 }
 
-void HTTPEndpoint::post(std::string pattern, auto parser, auto asyncfun, bool priv)
+void HTTPEndpoint::post(std::string pattern, auto parser, auto asyncfun, size_t maxBodySize, bool priv)
 {
     if (priv && isPublic)
         return;
     indexGenerator.post(pattern);
     app.post(pattern,
-        [this, pattern, parser = std::move(parser), asyncfun = std::move(asyncfun)](auto* res, uWS::HttpRequest* req) {
+        [this, pattern, parser = std::move(parser), asyncfun = std::move(asyncfun), maxBodySize](auto* res, uWS::HttpRequest* req) {
             spdlog::debug("POST {}", req->getUrl());
             std::vector<uint8_t> body;
 
             pendingRequests.insert(res);
             res->onData(
-                [this, asyncfun = std::move(asyncfun), parser = std::move(parser), res, body = std::move(body)](std::string_view data, bool last) mutable {
+                [this, asyncfun = std::move(asyncfun), parser = std::move(parser), res, body = std::move(body), maxBodySize, rejected = false](std::string_view data, bool last) mutable {
+                    if (rejected)
+                        return;
+                    if (data.size() > maxBodySize - body.size()) {
+                        rejected = true;
+                        pendingRequests.erase(res);
+                        res->writeStatus("413 Payload Too Large");
+                        send_json(res, jsonmsg::status(EINV_ARGS));
+                        return;
+                    }
                     constexpr bool mining = std::is_same_v<decltype(parser(body)), ChainMiningTask>;
                     const auto arrived = last && mining && latency::enabled() ? latency::Clock::now() : latency::TimePoint {};
                     body.insert(body.end(), data.begin(), data.end());

@@ -29,6 +29,9 @@ The socket probe checks authorization-before-job ordering, immediate jobs for
 workers sharing a payout address, unique extranonce prefixes, twelve reconnects,
 distinct payout addresses, last-worker resubscription, template preservation,
 and rejection of unknown jobs and invalid submissions through chain validation.
+The same runner also checks HTTP POST body and Stratum line limits on live sockets:
+boundary-sized inputs still reach the parsers, oversized and incomplete requests
+are rejected promptly, and the node continues serving healthy clients.
 The previously published `b87fc9ee` image fails the same-address worker check.
 
 The GHCR workflow runs the socket probe against a locally loaded image before
