@@ -32,6 +32,7 @@ struct ByFeeDesc {
     using const_iter_t = Txmap::const_iterator;
     bool insert(const_iter_t iter);
     [[nodiscard]] size_t erase(const_iter_t iter);
+    [[nodiscard]] size_t erase_many(const std::vector<const_iter_t>& iters);
     const_iter_t smallest() const { return data.back(); }
     std::vector<const_iter_t> sample(size_t n, size_t k) const;
     size_t size() const { return data.size(); }

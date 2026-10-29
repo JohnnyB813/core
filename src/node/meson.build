@@ -171,6 +171,12 @@ stratum_job_cache = executable('stratum_job_cache', vcs_dep, '../test/stratum_jo
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Stratum job cache', stratum_job_cache)
 
+mining_cache = executable('mining_cache', vcs_dep, '../test/mining_cache.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Mining cache payout index', mining_cache)
+
 stratum_submission = executable('stratum_submission', vcs_dep, '../test/stratum_submission.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,

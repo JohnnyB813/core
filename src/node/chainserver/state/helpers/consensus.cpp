@@ -56,8 +56,7 @@ void Chainstate::fork(Chainstate::ForkData&& fd)
     _mempool.erase_from_height(forkHeight);
     const auto minPinHeight { (length() + 1).pin_begin() };
     _mempool.erase_before_height(minPinHeight);
-    for (const auto& tid : chainTxIds)
-        _mempool.erase(tid);
+    _mempool.erase(chainTxIds);
 
     //////////////////////////////
     // inform mempool about balance changes
@@ -110,8 +109,7 @@ auto Chainstate::rollback(const RollbackResult& rb) -> HeaderchainRollback
     prune_txids();
 
     // remove from mempool (do FULL scan)
-    for (auto& tid : chainTxIds)
-        _mempool.erase(tid);
+    _mempool.erase(chainTxIds);
 
     // erase mempool after rollback height
     _mempool.erase_from_height(forkHeight);
@@ -164,8 +162,7 @@ auto Chainstate::append(AppendMulti ad) -> HeaderchainAppend
     auto nextBlockPinBegin { (length() + 1).pin_begin() };
     _mempool.erase_before_height(nextBlockPinBegin);
     // remove used transactions
-    for (const auto& tid : ad.appendResult.newTxIds)
-        _mempool.erase(tid);
+    _mempool.erase(ad.appendResult.newTxIds);
 
     // Confirmed transactions no longer reserve any of these final balances.
     for (auto& [accountId, balance] : ad.appendResult.balanceUpdates)
@@ -196,8 +193,7 @@ auto Chainstate::append(AppendSingle d) -> HeaderchainAppend
     auto nextBlockPinBegin { (l + 1).pin_begin() };
     _mempool.erase_before_height(nextBlockPinBegin);
     // remove used transactions
-    for (auto& tid : d.newTxIds)
-        _mempool.erase(tid);
+    _mempool.erase(d.newTxIds);
 
     // Confirmed transactions no longer reserve any of these final balances.
     for (auto& [accountId, balance] : d.balanceUpdates)

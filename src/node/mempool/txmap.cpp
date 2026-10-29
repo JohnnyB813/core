@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <random>
 #include <ranges>
+#include <unordered_set>
 namespace mempool {
 auto Txmap::by_fee_inc(AccountId id) const -> std::vector<const_iterator>
 {
@@ -27,7 +28,20 @@ bool ByFeeDesc::insert(const_iter_t iter)
 
 size_t ByFeeDesc::erase(const_iter_t iter)
 {
+    if (!data.empty() && data.back() == iter) {
+        data.pop_back();
+        return 1;
+    }
     return std::erase(data, iter);
+}
+
+size_t ByFeeDesc::erase_many(const std::vector<const_iter_t>& iters)
+{
+    std::unordered_set<const void*> removed;
+    removed.reserve(iters.size());
+    for (auto iter : iters)
+        removed.insert(&*iter);
+    return std::erase_if(data, [&](const_iter_t iter) { return removed.contains(&*iter); });
 }
 
 auto ByFeeDesc::sample(size_t n, size_t k) const -> std::vector<const_iter_t>

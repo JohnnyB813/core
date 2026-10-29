@@ -5,6 +5,10 @@
 #include "block/chain/header_chain.hpp"
 #include "block/chain/history/history.hpp"
 #include "db/chain_db.hpp"
+#include <atomic>
+#include <exception>
+#include <optional>
+#include <thread>
 
 namespace {
 
@@ -316,8 +320,7 @@ Preparation BlockApplier::Preparer::prepare(const BodyView& bv, const NonzeroHei
             .amount { r.amount },
         });
     }
-    for (auto& tr : balanceChecker.get_transfers()) {
-        auto verified { tr.verify(hc, height) };
+    auto append_transfer = [&](const TransferInternal& tr, const VerifiedTransfer& verified) {
         TransactionId tid { verified.id };
 
         // check for duplicate txid (also within current block)
@@ -335,6 +338,41 @@ Preparation BlockApplier::Preparer::prepare(const BodyView& bv, const NonzeroHei
             .toAddress { tr.toAddress },
             .amount { tr.amount },
         });
+    };
+
+    const auto& transfers = balanceChecker.get_transfers();
+    const unsigned availableThreads = std::thread::hardware_concurrency();
+    const size_t workerCount = std::min<size_t>(4, availableThreads ? availableThreads : 1);
+    if (transfers.size() < 64 || workerCount < 2) {
+        for (const auto& tr : transfers) {
+            auto verified { tr.verify(hc, height) };
+            append_transfer(tr, verified);
+        }
+    } else {
+        std::vector<std::optional<VerifiedTransfer>> verified(transfers.size());
+        std::vector<std::exception_ptr> failures(transfers.size());
+        std::atomic<size_t> next { 0 };
+        auto recover = [&] {
+            for (size_t i; (i = next.fetch_add(1, std::memory_order_relaxed)) < transfers.size();) {
+                try {
+                    verified[i].emplace(transfers[i].verify(hc, height));
+                } catch (...) {
+                    failures[i] = std::current_exception();
+                }
+            }
+        };
+        {
+            std::vector<std::jthread> workers;
+            workers.reserve(workerCount - 1);
+            for (size_t i = 1; i < workerCount; ++i)
+                workers.emplace_back(recover);
+            recover();
+        }
+        for (size_t i = 0; i < transfers.size(); ++i) {
+            if (failures[i])
+                std::rethrow_exception(failures[i]);
+            append_transfer(transfers[i], *verified[i]);
+        }
     }
     return res;
 }

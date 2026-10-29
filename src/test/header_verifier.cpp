@@ -61,6 +61,25 @@ int main() try
     }
     chain.finish();
 
+    ExtendableHeaderchain moveSource { Headerchain(chain) };
+    const auto* incompleteBytes = moveSource.incomplete_batch().data();
+    check(incompleteBytes != nullptr, "move fixture has no incomplete headers");
+    ExtendableHeaderchain moveConstructed(std::move(moveSource));
+    check(moveConstructed.incomplete_batch().data() == incompleteBytes,
+        "derived move construction copied incomplete headers");
+    check(moveConstructed.length() == Height(tip)
+            && moveConstructed.final_hash() == builder.final_hash()
+            && moveConstructed.next_target() == builder.next_target(),
+        "derived move construction changed verifier state");
+    ExtendableHeaderchain moveAssigned;
+    moveAssigned = std::move(moveConstructed);
+    check(moveAssigned.incomplete_batch().data() == incompleteBytes,
+        "derived move assignment copied incomplete headers");
+    check(moveAssigned.length() == Height(tip)
+            && moveAssigned.final_hash() == builder.final_hash()
+            && moveAssigned.next_target() == builder.next_target(),
+        "derived move assignment changed verifier state");
+
     std::set<unsigned> prefixes { tip };
     for (unsigned h = 0; h <= MEDIAN_N + 3; ++h) prefixes.insert(h);
     for (unsigned h = 720; h < tip; h += 720)

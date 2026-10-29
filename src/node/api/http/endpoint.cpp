@@ -131,9 +131,9 @@ void HTTPEndpoint::work()
 
     indexGenerator.section("Transaction Endpoints");
     post("/transaction/add", parse_payment_create, put_mempool, 8 * 1024);
-    get("/transaction/mempool", get_mempool);
+    get("/transaction/mempool", get_mempool, false, true);
     get_1("/transaction/lookup/:txid", lookup_tx);
-    get("/transaction/latest", get_latest_transactions);
+    get("/transaction/latest", get_latest_transactions, false, true);
     get("/transaction/minfee", get_transaction_minfee);
 
     indexGenerator.section("Settings");
@@ -144,7 +144,7 @@ void HTTPEndpoint::work()
     get("/chain/grid", get_chain_grid, true);
     get_1("/chain/block/:id/hash", get_chain_hash);
     get_1("/chain/block/:id/header", get_chain_header);
-    get_1("/chain/block/:id", get_chain_block);
+    get_1("/chain/block/:id", get_chain_block, false, true);
     get_1("/chain/mine/:account", get_chain_mine);
     get_1("/chain/mine/:account/log", get_chain_mine);
     get("/chain/signed_snapshot", get_signed_snapshot, true);
@@ -155,8 +155,8 @@ void HTTPEndpoint::work()
 
     indexGenerator.section("Account Endpoints");
     get_1("/account/:account/balance", get_account_balance);
-    get_2("/account/:account/history/:beforeTxIndex", get_account_history);
-    get("/account/richlist", get_account_richlist);
+    get_2("/account/:account/history/:beforeTxIndex", get_account_history, false, true);
+    get("/account/richlist", get_account_richlist, false, true);
 
     indexGenerator.section("Peers Endpoints");
     get("/peers/ip_count", inspect_conman, jsonmsg::ip_counter);
@@ -227,61 +227,94 @@ void HTTPEndpoint::get(std::string pattern, auto asyncfun, auto serializer, bool
         });
 }
 
-void HTTPEndpoint::get(std::string pattern, auto asyncfun, bool priv)
+void HTTPEndpoint::async_reply_json(uWS::HttpResponse<false>* res, auto&& data, std::shared_ptr<std::atomic_bool> active)
+{
+    if (!active->load())
+        return;
+    using Snapshot = std::decay_t<decltype(data)>;
+    Snapshot snapshot(std::forward<decltype(data)>(data));
+    lc.loop->defer([this, res, active = std::move(active), snapshot = std::move(snapshot)]() mutable {
+        if (active->exchange(false) && pendingRequests.contains(res))
+            send_reply(res, jsonmsg::serialize(std::as_const(snapshot)));
+    });
+}
+
+void HTTPEndpoint::get(std::string pattern, auto asyncfun, bool priv, bool serializeOnHttpLoop)
 {
     if (priv && isPublic)
         return;
     indexGenerator.get(pattern);
     app.get(pattern,
-        [this, asyncfun, pattern](auto* res, auto* req) {
+        [this, asyncfun, pattern, serializeOnHttpLoop](auto* res, auto* req) {
             spdlog::debug("GET {}", req->getUrl());
+            auto active = serializeOnHttpLoop ? std::make_shared<std::atomic_bool>(true) : nullptr;
             asyncfun(
-                [this, res]<typename T>(T&& data) {
-                    async_reply(res, jsonmsg::serialize(std::forward<T>(data)));
+                [this, res, serializeOnHttpLoop, active]<typename T>(T&& data) {
+                    if (serializeOnHttpLoop)
+                        async_reply_json(res, std::forward<T>(data), active);
+                    else
+                        async_reply(res, jsonmsg::serialize(std::forward<T>(data)));
                 });
             pendingRequests.insert(res);
-            res->onAborted([this, res]() { on_aborted(res); });
+            res->onAborted([this, res, active]() {
+                if (active) active->store(false);
+                on_aborted(res);
+            });
         });
 }
 
-void HTTPEndpoint::get_1(std::string pattern, auto asyncfun, bool priv)
+void HTTPEndpoint::get_1(std::string pattern, auto asyncfun, bool priv, bool serializeOnHttpLoop)
 {
     if (priv && isPublic)
         return;
     indexGenerator.get(pattern);
     app.get(pattern,
-        [this, asyncfun, pattern](auto* res, auto* req) {
+        [this, asyncfun, pattern, serializeOnHttpLoop](auto* res, auto* req) {
             spdlog::debug("GET {}", req->getUrl());
             try {
                 ParameterParser p1 { req->getParameter(0) };
+                auto active = serializeOnHttpLoop ? std::make_shared<std::atomic_bool>(true) : nullptr;
                 asyncfun(p1,
-                    [this, res](auto& data) {
-                        async_reply(res, jsonmsg::serialize(data));
+                    [this, res, serializeOnHttpLoop, active](auto& data) {
+                        if (serializeOnHttpLoop)
+                            async_reply_json(res, data, active);
+                        else
+                            async_reply(res, jsonmsg::serialize(data));
                     });
                 pendingRequests.insert(res);
-                res->onAborted([this, res]() { on_aborted(res); });
+                res->onAborted([this, res, active]() {
+                    if (active) active->store(false);
+                    on_aborted(res);
+                });
             } catch (Error e) {
                 send_json(res, jsonmsg::serialize(tl::make_unexpected(e.e)));
             }
         });
 }
-void HTTPEndpoint::get_2(std::string pattern, auto asyncfun, bool priv)
+void HTTPEndpoint::get_2(std::string pattern, auto asyncfun, bool priv, bool serializeOnHttpLoop)
 {
     if (priv && isPublic)
         return;
     indexGenerator.get(pattern);
     app.get(pattern,
-        [this, asyncfun, pattern](auto* res, auto* req) {
+        [this, asyncfun, pattern, serializeOnHttpLoop](auto* res, auto* req) {
             spdlog::debug("GET {}", req->getUrl());
             try {
                 ParameterParser p1 { req->getParameter(0) };
                 ParameterParser p2 { req->getParameter(1) };
+                auto active = serializeOnHttpLoop ? std::make_shared<std::atomic_bool>(true) : nullptr;
                 asyncfun(p1, p2,
-                    [this, res](auto& data) {
-                        async_reply(res, jsonmsg::serialize(data));
+                    [this, res, serializeOnHttpLoop, active](auto& data) {
+                        if (serializeOnHttpLoop)
+                            async_reply_json(res, data, active);
+                        else
+                            async_reply(res, jsonmsg::serialize(data));
                     });
                 pendingRequests.insert(res);
-                res->onAborted([this, res]() { on_aborted(res); });
+                res->onAborted([this, res, active]() {
+                    if (active) active->store(false);
+                    on_aborted(res);
+                });
             } catch (Error e) {
                 send_json(res, jsonmsg::serialize(tl::make_unexpected(e.e)));
             }

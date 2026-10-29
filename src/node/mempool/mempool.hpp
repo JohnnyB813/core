@@ -47,6 +47,7 @@ public:
     void insert_tx_throw(const TransferTxExchangeMessage& pm, TransactionHeight txh, const TxHash& hash, const AddressFunds& e);
     size_t on_constraint_update();
     void erase(TransactionId id);
+    void erase(const chainserver::TransactionIds& ids);
     void set_balance(AccountId, Funds newBalance);
     void erase_from_height(Height);
     void erase_before_height(Height);
@@ -86,7 +87,8 @@ private:
     void apply_logevent(const Put&);
     void apply_logevent(const Erase&);
     void erase_internal(Txmap::const_iterator);
-    bool erase_internal(Txmap::const_iterator, BalanceEntries::iterator, bool gc = true);
+    bool erase_internal(Txmap::const_iterator, BalanceEntries::iterator, bool gc = true, bool feePreRemoved = false);
+    void erase_selected(std::vector<const_iter_t> selected);
     void prune();
 
 private:

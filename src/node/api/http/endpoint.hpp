@@ -4,6 +4,7 @@
 #include "block/block.hpp"
 #include "general/tcp_util.hpp"
 #include "uwebsockets/App.h"
+#include <atomic>
 #include <thread>
 #include <variant>
 
@@ -48,15 +49,16 @@ private:
     {
         lc.loop->defer(std::bind(&HTTPEndpoint::send_reply, this, res, std::move(reply)));
     }
+    void async_reply_json(uWS::HttpResponse<false>* res, auto&& data, std::shared_ptr<std::atomic_bool> active);
     void work();
     void shutdown();
     void on_event(WebsocketEvent&& e);
 
     void send_reply(uWS::HttpResponse<false>* res, const std::string& s);
     void get(std::string pattern, auto asyncfun, auto serializer, bool priv = false);
-    void get(std::string pattern, auto asyncfun, bool priv = false);
-    void get_1(std::string pattern, auto asyncfun, bool priv = false);
-    void get_2(std::string pattern, auto asyncfun, bool priv = false);
+    void get(std::string pattern, auto asyncfun, bool priv = false, bool serializeOnHttpLoop = false);
+    void get_1(std::string pattern, auto asyncfun, bool priv = false, bool serializeOnHttpLoop = false);
+    void get_2(std::string pattern, auto asyncfun, bool priv = false, bool serializeOnHttpLoop = false);
     void get_3(std::string pattern, auto asyncfun, bool priv = false);
     void post(std::string pattern, auto parser, auto asyncfun, size_t maxBodySize, bool priv = false);
 

@@ -7,6 +7,7 @@
 #include "helpers/consensus.hpp"
 #include "helpers/past_chains.hpp"
 #include <chrono>
+#include <map>
 
 class ChainDB;
 struct Block;
@@ -43,6 +44,7 @@ struct MiningCache {
     [[nodiscard]] const BodyContainer* lookup(const Address&, bool disableTxs) const;
     const BodyContainer& insert(const Address& a, bool disableTxs, BodyContainer);
     std::vector<Item> cache;
+    std::map<std::pair<Address, bool>, size_t> cacheIndex;
 };
 class State {
     friend class ApplyStageTransaction;

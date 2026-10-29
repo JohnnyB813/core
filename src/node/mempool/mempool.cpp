@@ -87,9 +87,10 @@ std::optional<TransferTxExchangeMessage> Mempool::operator[](const HashView txHa
     return TransferTxExchangeMessage { (*iter)->first, (*iter)->second };
 }
 
-bool Mempool::erase_internal(Txmap::const_iterator iter, BalanceEntries::iterator b_iter, bool gc)
+bool Mempool::erase_internal(Txmap::const_iterator iter, BalanceEntries::iterator b_iter, bool gc, bool feePreRemoved)
 {
-    assert(size() == byFee.size());
+    if (!feePreRemoved)
+        assert(size() == byFee.size());
     assert(size() == byPin.size());
     assert(size() == byHash.size());
 
@@ -98,9 +99,14 @@ bool Mempool::erase_internal(Txmap::const_iterator iter, BalanceEntries::iterato
     Funds spend { iter->second.spend_assert() };
 
     // erase iter and its references
-    assert(byPin.erase(iter) == 1);
-    assert(byFee.erase(iter) == 1);
-    assert(byHash.erase(iter) == 1);
+    const auto pinRemoved = byPin.erase(iter);
+    assert(pinRemoved == 1);
+    if (!feePreRemoved) {
+        const auto feeRemoved = byFee.erase(iter);
+        assert(feeRemoved == 1);
+    }
+    const auto hashRemoved = byHash.erase(iter);
+    assert(hashRemoved == 1);
     txs().erase(iter);
 
     if (master)
@@ -124,18 +130,49 @@ void Mempool::erase_internal(Txmap::const_iterator iter)
     erase_internal(iter, b_iter);
 }
 
+void Mempool::erase_selected(std::vector<const_iter_t> selected)
+{
+    if (selected.empty())
+        return;
+    if (selected.size() == 1) {
+        erase_internal(selected.front());
+        return;
+    }
+    const auto removed = byFee.erase_many(selected);
+    assert(removed == selected.size());
+    for (auto iter : selected)
+        erase_internal(iter, balanceEntries.find(iter->first.accountId), true, true);
+    assert(size() == byFee.size());
+}
+
 void Mempool::erase_from_height(Height h)
 {
-    auto iter = byPin.lower_bound(h);
-    while (iter != byPin.end())
-        erase_internal(*(iter++));
+    auto first = byPin.lower_bound(h);
+    if (first == byPin.end())
+        return;
+    if (std::next(first) == byPin.end()) {
+        erase_internal(*first);
+        return;
+    }
+    std::vector<const_iter_t> selected;
+    for (auto iter = first; iter != byPin.end(); ++iter)
+        selected.push_back(*iter);
+    erase_selected(std::move(selected));
 }
 
 void Mempool::erase_before_height(Height h)
 {
     auto end = byPin.lower_bound(h);
-    for (auto iter = byPin.begin(); iter != end;)
-        erase_internal(*(iter++));
+    if (byPin.begin() == end)
+        return;
+    if (std::next(byPin.begin()) == end) {
+        erase_internal(*byPin.begin());
+        return;
+    }
+    std::vector<const_iter_t> selected;
+    for (auto iter = byPin.begin(); iter != end; ++iter)
+        selected.push_back(*iter);
+    erase_selected(std::move(selected));
 }
 
 void Mempool::erase(TransactionId id)
@@ -143,6 +180,18 @@ void Mempool::erase(TransactionId id)
     auto& t { txs() };
     if (auto iter = t.find(id); iter != t.end())
         erase_internal(iter);
+}
+
+void Mempool::erase(const chainserver::TransactionIds& ids)
+{
+    std::vector<const_iter_t> selected;
+    selected.reserve(std::min(ids.size(), size()));
+    for (const auto& id : ids) {
+        auto& map = txs();
+        if (auto iter = map.find(id); iter != map.end())
+            selected.push_back(iter);
+    }
+    erase_selected(std::move(selected));
 }
 
 std::vector<TxidWithFee> Mempool::sample(size_t N) const

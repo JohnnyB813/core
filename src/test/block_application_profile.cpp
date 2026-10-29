@@ -14,6 +14,7 @@
 #include "nlohmann/json.hpp"
 #include "sqlite3.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -24,7 +25,7 @@
 
 using Clock = std::chrono::steady_clock;
 using json = nlohmann::json;
-static size_t recoveries = 0;
+static std::atomic<size_t> recoveries { 0 };
 static sqlite3* profiledDatabase = nullptr;
 static int capture_database(sqlite3* db, char**, const sqlite3_api_routines*)
 {

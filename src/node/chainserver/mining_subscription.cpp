@@ -14,9 +14,13 @@ void MiningSubscriptions::dispatch(std::function<tl::expected<ChainMiningTask, E
 {
     for (auto& [addr, v] : subscriptions) {
         auto b { blockGenerator(addr) };
-        for (auto& [_, f] : v) {
-            if (b.has_value())
-                f(ChainMiningTask { b.value() });
+        if (!b.has_value())
+            continue;
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i + 1 == v.size())
+                v[i].callback(std::move(b));
+            else
+                v[i].callback(ChainMiningTask { b.value() });
         }
     }
 }

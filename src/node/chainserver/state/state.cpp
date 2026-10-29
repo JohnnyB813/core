@@ -24,10 +24,17 @@ void MiningCache::update_validity(CacheValidity cv)
 {
     if (cacheValidity != cv)
         cache.clear();
+    if (cacheValidity != cv)
+        cacheIndex.clear();
     cacheValidity = cv;
 }
 const BodyContainer* MiningCache::lookup(const Address& a, bool disableTxs) const
 {
+    constexpr size_t indexThreshold = 64;
+    if (cache.size() >= indexThreshold) {
+        const auto iter = cacheIndex.find({ a, disableTxs });
+        return iter == cacheIndex.end() ? nullptr : &cache[iter->second].b;
+    }
     auto iter { std::find_if(cache.begin(), cache.end(), [&](const Item& i) {
         return i.address == a && i.disableTxs == disableTxs;
     }) };
@@ -39,6 +46,13 @@ const BodyContainer* MiningCache::lookup(const Address& a, bool disableTxs) cons
 const BodyContainer& MiningCache::insert(const Address& a, bool disableTxs, BodyContainer b)
 {
     cache.push_back({ a, disableTxs, std::move(b) });
+    constexpr size_t indexThreshold = 64;
+    if (cache.size() == indexThreshold) {
+        for (size_t i = 0; i < cache.size(); ++i)
+            cacheIndex.try_emplace({ cache[i].address, cache[i].disableTxs }, i);
+    } else if (cache.size() > indexThreshold) {
+        cacheIndex.try_emplace({ a, disableTxs }, cache.size() - 1);
+    }
     return cache.back().b;
 }
 
@@ -764,7 +778,7 @@ auto State::api_get_history(Address a, uint64_t beforeId) -> std::optional<API::
     return API::AccountHistory {
         .balance = balance,
         .fromId = firstHistoryId,
-        .blocks_reversed = blocks_reversed
+        .blocks_reversed = std::move(blocks_reversed)
     };
 }
 
@@ -777,17 +791,19 @@ auto State::get_blocks(DescriptedBlockRange range) -> std::vector<BodyContainer>
 {
     assert(range.lower != 0);
     assert(range.upper >= range.lower);
-    std::vector<Hash> hashes(range.upper - range.lower + 1);
+    std::vector<Hash> hashes;
     std::vector<BodyContainer> res;
     if (range.descriptor == chainstate.descriptor()) {
         if (chainstate.length() < range.upper)
             return {};
+        hashes.resize(range.upper - range.lower + 1);
         for (Height h = range.lower; h < range.upper + 1; ++h) {
             hashes[h - range.lower] = chainstate.headers().hash_at(h);
         }
     } else {
         hashes = blockCache.get_hashes(range);
     }
+    res.reserve(hashes.size());
     for (size_t i = 0; i < hashes.size(); ++i) {
         auto hash { hashes[i] };
         auto b { db.get_block(hash) };

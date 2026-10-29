@@ -61,9 +61,11 @@ public:
     ExtendableHeaderchain(const Headerchain&, Height height);
     ExtendableHeaderchain(Headerchain&&);
     ExtendableHeaderchain(const ExtendableHeaderchain&) = default;
+    ExtendableHeaderchain(ExtendableHeaderchain&&) = default;
 
     ExtendableHeaderchain& operator=(Headerchain&&);
     ExtendableHeaderchain& operator=(const ExtendableHeaderchain&) = default;
+    ExtendableHeaderchain& operator=(ExtendableHeaderchain&&) = default;
 
     // Modifiers
     void shrink(Height newlength); // OK

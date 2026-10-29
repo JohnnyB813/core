@@ -191,6 +191,7 @@ Batch Headerchain::get_headers(NonzeroHeight begin, NonzeroHeight end) const
 
     Height h = begin;
     std::vector<uint8_t> tmp;
+    tmp.reserve(size_t(end - begin) * Header::byte_size());
     while (h < end) {
         Batchslot bs(h);
         const Batch* p = operator[](bs);
