@@ -6,5 +6,5 @@ COPY . /code
 WORKDIR /code
 RUN --mount=type=cache,id=warthog-test-sources,target=/code/subprojects/packagecache,sharing=locked \
     LDFLAGS='-static' meson setup /build --default-library static --buildtype=release \
-    && meson compile -C /build -j "${BUILD_JOBS}" custom_float stratum_job_cache stratum_preparation stratum_submission local_correctness chain_worker latency_policy journal_modes sqlite_workload mempool_replacement mempool_reconciliation mempool_admission mempool_api_snapshot websocket_probe db_maintenance block_lookup http_payment_parsing header_verifier timer_handles \
+    && meson compile -C /build -j "${BUILD_JOBS}" custom_float stratum_job_cache stratum_preparation stratum_submission local_correctness chain_worker latency_policy journal_modes sqlite_workload mempool_replacement mempool_reconciliation mempool_admission mempool_api_snapshot websocket_probe db_maintenance block_lookup http_payment_parsing header_verifier hashrate_reporting timer_handles \
     && meson test -C /build --no-rebuild --print-errorlogs
