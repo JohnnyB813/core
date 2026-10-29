@@ -103,8 +103,14 @@ and the new compiled test source were checked against the working tree.
 
 The first three rows below are implemented by the focused patch above.
 Failed-address insertion and invalid Janushash handling are implemented by the
-follow-up patch. Hashrate reporting remains a proposal under its compatibility
-classification; the table preserves the original discovery evidence.
+follow-up patch. Hashrate reporting was corrected in the 2026-10-29 follow-up;
+the table preserves the original discovery evidence. The reporting path now
+subtracts existing prefix work at the window endpoints and adds the new upper
+header's work when the chart advances. The shared consensus `sum_work` helper
+is unchanged. An independent per-header regression passed across retarget and
+batch boundaries, all 27 native tests passed, and old/new testnet nodes synced
+three accepted blocks in each direction with matching head work. An isolated
+HTTP check also passed valid scalar/chart requests and invalid window checks.
 
 | Priority | Finding | Evidence and consequence | Suggested patch and regression coverage |
 | --- | --- | --- | --- |

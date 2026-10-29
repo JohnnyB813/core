@@ -4,7 +4,9 @@
 #include "block/header/header_impl.hpp"
 #include "chainserver/server.hpp"
 #include "eventloop/eventloop.hpp"
+#include "general/errors.hpp"
 #include "global/globals.hpp"
+#include <limits>
 
 // mempool functions
 void put_mempool(PaymentCreateMessage&& m, MempoolInsertCb cb)
@@ -277,6 +279,10 @@ void get_txcache(TxcacheCb&& cb)
 
 void get_hashrate_n(size_t n, HashrateCb&& cb)
 {
+    if (n == 0 || n > std::numeric_limits<uint32_t>::max()) {
+        cb(tl::make_unexpected(EINV_ARGS));
+        return;
+    }
     global().pel->api_get_hashrate(std::move(cb), n);
 }
 void get_hashrate(HashrateCb&& cb)
@@ -285,6 +291,10 @@ void get_hashrate(HashrateCb&& cb)
 }
 void get_hashrate_chart(NonzeroHeight from, NonzeroHeight to, size_t window, HashrateChartCb&& cb)
 {
+    if (window == 0 || window > std::numeric_limits<uint32_t>::max()) {
+        cb(tl::make_unexpected(EINV_ARGS));
+        return;
+    }
     global().pel->api_get_hashrate_chart(from, to, window, std::move(cb));
 }
 

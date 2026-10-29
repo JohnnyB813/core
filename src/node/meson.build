@@ -194,7 +194,7 @@ block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
 test('Block lookup height and identity', block_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
-foreach group : ['http_payment_parsing', 'header_verifier', 'timer_handles']
+foreach group : ['http_payment_parsing', 'header_verifier', 'hashrate_reporting', 'timer_handles']
   correctness = executable(group, vcs_dep, '../test/' + group + '.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
