@@ -1,4 +1,5 @@
 #include "globals.hpp"
+#include "api/http/endpoint.hpp"
 #include "asyncio/conman.hpp"
 #include "general/is_testnet.hpp"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -67,7 +68,7 @@ Config& set_config()
     return globalinstance.conf;
 }
 
-void global_init(BatchRegistry* pbr, PeerServer* pps, ChainServer* pcs, Conman* pcm, Eventloop* pel, HTTPEndpoint* httpEndpoint)
+void global_init(BatchRegistry* pbr, PeerServer* pps, ChainServer* pcs, Conman* pcm, Eventloop* pel, HTTPEndpoint* httpEndpoint, HTTPEndpoint* publicHttpEndpoint)
 {
     globalinstance.pbr = pbr;
     globalinstance.pps = pps;
@@ -75,6 +76,7 @@ void global_init(BatchRegistry* pbr, PeerServer* pps, ChainServer* pcs, Conman* 
     globalinstance.pcs = pcs;
     globalinstance.pel = pel;
     globalinstance.httpEndpoint = httpEndpoint;
+    globalinstance.publicHttpEndpoint = publicHttpEndpoint;
     globalinstance.connLogger = create_connection_logger();
     ;
     globalinstance.syncdebugLogger = create_syncdebug_logger();
@@ -86,3 +88,26 @@ HTTPEndpoint& http_endpoint()
 {
     return *globalinstance.httpEndpoint;
 };
+
+namespace {
+template <typename Event>
+void publish_event(Event event)
+{
+    if (auto* publicEndpoint = globalinstance.publicHttpEndpoint) {
+        globalinstance.httpEndpoint->push_event(event);
+        publicEndpoint->push_event(std::move(event));
+    } else {
+        globalinstance.httpEndpoint->push_event(std::move(event));
+    }
+}
+}
+
+void publish_websocket_event(API::Block block)
+{
+    publish_event(std::move(block));
+}
+
+void publish_websocket_event(API::Rollback rollback)
+{
+    publish_event(std::move(rollback));
+}

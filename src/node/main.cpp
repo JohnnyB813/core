@@ -119,7 +119,7 @@ int main(int argc, char** argv)
     auto endpointPublic { HTTPEndpoint::make_public_endpoint(config(), HTTPEndpoint::StartMode::Deferred) };
 
     // setup globals
-    global_init(&breg, &ps, &*cs, &cm, &el, &endpoint);
+    global_init(&breg, &ps, &*cs, &cm, &el, &endpoint, endpointPublic ? &*endpointPublic : nullptr);
 
     // running eventloops
     el.start_async_loop();

@@ -153,6 +153,9 @@ if test_python.found()
   test('WebSocket subscribers and serialization', test_python,
     args: [files('../test/websocket_subscribers.py'), websocket_probe,
       files('../test/fixtures/genesis-mainnet.json')], timeout: 60)
+  test('Public WebSocket event delivery', test_python,
+    args: [files('../test/websocket_public.py'), websocket_probe,
+      files('../test/fixtures/genesis-mainnet.json')], timeout: 60)
 endif
 
 stratum_preparation = executable('stratum_preparation', vcs_dep, '../test/stratum_preparation.cpp',

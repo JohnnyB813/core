@@ -488,17 +488,17 @@ void State::publish_websocket_events(const std::optional<StateUpdate>& update, c
         auto& u { update->chainstateUpdate };
         if (std::holds_alternative<Fork>(u)) {
             auto& l { std::get<Fork>(u).shrinkLength };
-            http_endpoint().push_event(API::Rollback { l });
+            publish_websocket_event(API::Rollback { l });
         } else if (std::holds_alternative<RollbackData>(u)) {
             auto& d { std::get<RollbackData>(u).data };
             if (d.has_value()) {
                 auto& l { d->rollback.shrinkLength };
-                http_endpoint().push_event(API::Rollback { l });
+                publish_websocket_event(API::Rollback { l });
             }
         }
     }
     for (auto& b : apiBlocks) {
-        http_endpoint().push_event(b);
+        publish_websocket_event(b);
     }
 }
 auto State::apply_stage(ChainDBTransaction&& t) -> std::tuple<ChainError, std::optional<StateUpdate>, std::vector<API::Block>>
@@ -606,7 +606,6 @@ auto State::append_mined_block(const Block& b) -> StateUpdate
 
     chainserver::BlockApplier e { db, chainstate.headers(), chainstate.txids(), false };
     auto apiBlock { e.apply_block(bv, b.header, nextHeight, blockId) };
-    http_endpoint().push_event(apiBlock);
     db.set_consensus_work(chainstate.work_with_new_block());
     transaction.commit();
 
@@ -621,6 +620,7 @@ auto State::append_mined_block(const Block& b) -> StateUpdate
     ul.unlock();
 
     dbCacheValidity += 1;
+    publish_websocket_event(std::move(apiBlock));
     return {
         .chainstateUpdate { state_update::Append {
             headerchainAppend,

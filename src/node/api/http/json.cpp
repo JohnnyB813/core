@@ -13,6 +13,7 @@
 #include "general/hex.hpp"
 #include "general/is_testnet.hpp"
 #include "version.hpp"
+#include <cstdio>
 #include <ranges>
 
 using namespace std::chrono;
@@ -20,13 +21,15 @@ using namespace nlohmann;
 namespace {
 std::string format_utc(uint32_t timestamp)
 {
-    std::chrono::system_clock::time_point tp { std::chrono::seconds(timestamp) };
-    auto tt { std::chrono::system_clock::to_time_t(tp) };
-    auto utc_f = *std::gmtime(&tt);
-    std::string out;
-    out.resize(30);
-    auto len { std::strftime(&out[0], out.size(), "%F %T UTC", &utc_f) };
-    out.resize(len);
+    const sys_seconds tp { seconds(timestamp) };
+    const auto day { floor<days>(tp) };
+    const year_month_day date { day };
+    const hh_mm_ss time { tp - day };
+    char out[30];
+    std::snprintf(out, sizeof(out), "%04d-%02u-%02u %02lld:%02lld:%02lld UTC",
+        int(date.year()), unsigned(date.month()), unsigned(date.day()),
+        static_cast<long long>(time.hours().count()), static_cast<long long>(time.minutes().count()),
+        static_cast<long long>(time.seconds().count()));
     return out;
 }
 }

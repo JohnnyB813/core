@@ -16,8 +16,8 @@ import time
 
 
 class WebSocket:
-    def __init__(self):
-        self.socket = socket.create_connection(('127.0.0.1', 34200), timeout=3)
+    def __init__(self, port=34200, host='127.0.0.1'):
+        self.socket = socket.create_connection((host, port), timeout=3)
         self.buffer = b''
         key = base64.b64encode(os.urandom(16)).decode()
         self.socket.sendall(('GET /ws/chain_delta HTTP/1.1\r\nHost: localhost\r\n'
@@ -66,8 +66,8 @@ class WebSocket:
             self.socket.close()
 
 
-def barrier():
-    connection = http.client.HTTPConnection('127.0.0.1', 34200, timeout=3)
+def barrier(port=34200):
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
     try:
         connection.request('GET', '/tools/version')
         response = connection.getresponse()
