@@ -6,6 +6,8 @@ FROM --platform=$BUILDPLATFORM crazymax/osxcross:${OSXCROSS_VERSION}-alpine AS o
 FROM alpine:3.23.6 AS build
 RUN apk add --no-cache clang lld musl-dev fts-dev meson libgcc gcc g++ pkgconf
 ARG BUILD_JOBS=2
+ARG WARTHOG_COMMIT=unknown
+ENV WARTHOG_COMMIT=${WARTHOG_COMMIT}
 ENV PATH="/osxcross/bin:$PATH"
 ENV LD_LIBRARY_PATH="/osxcross/lib"
 COPY --from=osxcross /osxcross /osxcross

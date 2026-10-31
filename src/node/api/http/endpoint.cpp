@@ -36,6 +36,12 @@ struct ParameterParser {
             return { Hash { *this } };
         return { Height { *this } };
     }
+    operator API::HistoryIdOrHash()
+    {
+        if (sv.length() == 64)
+            return { Hash { *this } };
+        return { HistoryId { static_cast<uint64_t>(*this) } };
+    }
     operator API::AccountIdOrAddress()
     {
         if (sv.length() == 48)

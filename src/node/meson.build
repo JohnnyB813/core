@@ -66,20 +66,20 @@ src= [
 include_thirdparty=[include_trezorcrypto,include_wh,include_secp256k1,include_sqlitecpp,include_usockets,include_uwebsockets,include_json,include_tomlplusplus, include_tl]
 lib_thirdparty=[libsecp256k1, libusockets]
 node_source_files = files(src) + src_sqlitecpp + src_wh
-node_runtime = executable('wart-node', vcs_dep, [node_source_files,'./main.cpp'],
+node_runtime = executable('wart-node', [node_source_files,'./main.cpp'],
   include_directories:['./' ,include_thirdparty],
   link_with: lib_thirdparty,
   dependencies: [sqlite3_dep,libuv_dep,uvw_dep,spdlog_dep],
   install : true)
 
-mempool_replacement = executable('mempool_replacement', vcs_dep, '../test/mempool_replacement.cpp',
+mempool_replacement = executable('mempool_replacement', '../test/mempool_replacement.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Mempool replacement accounting', mempool_replacement)
 
-local_correctness = executable('local_correctness', vcs_dep, '../test/local_correctness.cpp',
+local_correctness = executable('local_correctness', '../test/local_correctness.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
@@ -93,7 +93,7 @@ if host_machine.system() == 'linux'
   worker_cpp_args = ['-DWORKER_JOIN_BARRIER']
   worker_link_args = ['-Wl,--wrap=pthread_join']
 endif
-chain_worker = executable('chain_worker', vcs_dep, '../test/chain_worker.cpp',
+chain_worker = executable('chain_worker', '../test/chain_worker.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   cpp_args: worker_cpp_args, link_args: worker_link_args,
@@ -101,7 +101,7 @@ chain_worker = executable('chain_worker', vcs_dep, '../test/chain_worker.cpp',
 test('Chain worker concurrency and shutdown', chain_worker, timeout: 120,
   env: {'HOME': meson.current_build_dir() / 'worker-home'})
 
-mempool_reconciliation = executable('mempool_reconciliation', vcs_dep, '../test/mempool_reconciliation.cpp',
+mempool_reconciliation = executable('mempool_reconciliation', '../test/mempool_reconciliation.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
@@ -117,7 +117,7 @@ if host_machine.system() == 'linux'
   admission_cpp_args += ['-DCOUNT_SIGNATURE_RECOVERIES']
   admission_link_args += ['-Wl,--wrap=secp256k1_ecdsa_recover']
 endif
-mempool_admission = executable('mempool_admission', vcs_dep, '../test/mempool_admission.cpp',
+mempool_admission = executable('mempool_admission', '../test/mempool_admission.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
@@ -127,7 +127,7 @@ mempool_admission = executable('mempool_admission', vcs_dep, '../test/mempool_ad
 test('Mempool admission signatures', mempool_admission,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
-mempool_api_snapshot = executable('mempool_api_snapshot', vcs_dep, '../test/mempool_api_snapshot.cpp',
+mempool_api_snapshot = executable('mempool_api_snapshot', '../test/mempool_api_snapshot.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   cpp_args: admission_cpp_args, link_args: admission_link_args,
@@ -143,7 +143,7 @@ if host_machine.system() == 'linux' and meson.get_compiler('cpp').get_id() == 'g
   websocket_link_args = ['-Wl,--wrap=_ZN7jsonmsg7to_jsonB5cxx11ERKN3API5BlockE',
     '-Wl,--wrap=_ZN7jsonmsg7to_jsonB5cxx11ERKN3API8RollbackE']
 endif
-websocket_probe = executable('websocket_probe', vcs_dep, '../test/websocket_probe.cpp',
+websocket_probe = executable('websocket_probe', '../test/websocket_probe.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   cpp_args: websocket_cpp_args, link_args: websocket_link_args,
@@ -158,26 +158,26 @@ if test_python.found()
       files('../test/fixtures/genesis-mainnet.json')], timeout: 60)
 endif
 
-stratum_preparation = executable('stratum_preparation', vcs_dep, '../test/stratum_preparation.cpp',
+stratum_preparation = executable('stratum_preparation', '../test/stratum_preparation.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Stratum work preparation', stratum_preparation)
 
-stratum_job_cache = executable('stratum_job_cache', vcs_dep, '../test/stratum_job_cache.cpp',
+stratum_job_cache = executable('stratum_job_cache', '../test/stratum_job_cache.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Stratum job cache', stratum_job_cache)
 
-mining_cache = executable('mining_cache', vcs_dep, '../test/mining_cache.cpp',
+mining_cache = executable('mining_cache', '../test/mining_cache.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Mining cache payout index', mining_cache)
 
-stratum_submission = executable('stratum_submission', vcs_dep, '../test/stratum_submission.cpp',
+stratum_submission = executable('stratum_submission', '../test/stratum_submission.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
@@ -185,14 +185,14 @@ foreach network : ['mainnet', 'testnet']
   test('Stratum submission ' + network, stratum_submission, args: [network])
 endforeach
 
-db_maintenance = executable('db_maintenance', vcs_dep, '../test/db_maintenance.cpp',
+db_maintenance = executable('db_maintenance', '../test/db_maintenance.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test('Database maintenance retention and retry', db_maintenance)
 
-block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
+block_lookup = executable('block_lookup', '../test/block_lookup.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
@@ -200,7 +200,7 @@ block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
 test('Block lookup height and identity', block_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
-transaction_lookup = executable('transaction_lookup', vcs_dep, '../test/transaction_lookup.cpp',
+transaction_lookup = executable('transaction_lookup', '../test/transaction_lookup.cpp',
   objects: node_runtime.extract_objects(node_source_files),
   include_directories: ['./', include_thirdparty],
   link_with: lib_thirdparty,
@@ -209,7 +209,7 @@ test('Transaction lookup hash collisions', transaction_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
 foreach group : ['http_payment_parsing', 'header_verifier', 'hashrate_reporting', 'timer_handles']
-  correctness = executable(group, vcs_dep, '../test/' + group + '.cpp',
+  correctness = executable(group, '../test/' + group + '.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
@@ -223,35 +223,35 @@ if get_option('performance-tools')
       submit_profile_sources += files(source)
     endif
   endforeach
-  executable('stratum_submission_profile', vcs_dep,
+  executable('stratum_submission_profile',
     ['./main.cpp', './api/stratum/stratum_server.cpp', '../test/stratum_submission_profile.cpp'],
     objects: node_runtime.extract_objects(submit_profile_sources + src_sqlitecpp + src_wh),
     include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
     cpp_args: ['-Dput_chain_append=profile_chain_append'],
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
-  executable('stratum_submit_fixture', vcs_dep, '../test/stratum_submit_fixture.cpp',
+  executable('stratum_submit_fixture', '../test/stratum_submit_fixture.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty], link_with: lib_thirdparty,
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
-  executable('block_application_profile', vcs_dep, '../test/block_application_profile.cpp',
+  executable('block_application_profile', '../test/block_application_profile.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],
     link_with: lib_thirdparty,
     cpp_args: admission_cpp_args,
     link_args: admission_link_args,
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
-  executable('stratum_fanout', vcs_dep, '../test/stratum_fanout.cpp',
+  executable('stratum_fanout', '../test/stratum_fanout.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],
     link_with: lib_thirdparty,
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
-  node_replay = executable('node_replay', vcs_dep, '../test/node_replay.cpp',
+  node_replay = executable('node_replay', '../test/node_replay.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],
     link_with: lib_thirdparty,
     dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
   old_sqlite_dep = subproject('sqlite3-baseline', default_options: ['warning_level=0', 'werror=false']).get_variable('sqlite3_dep')
-  executable('node_replay_old_sqlite', vcs_dep, '../test/node_replay.cpp',
+  executable('node_replay_old_sqlite', '../test/node_replay.cpp',
     objects: node_runtime.extract_objects(node_source_files),
     include_directories: ['./', include_thirdparty],
     link_with: lib_thirdparty,

@@ -2,6 +2,8 @@
 FROM alpine:3.23.6 AS build
 RUN apk add --no-cache meson libgcc musl-dev gcc g++ mingw-w64-gcc
 ARG BUILD_JOBS=2
+ARG WARTHOG_COMMIT=unknown
+ENV WARTHOG_COMMIT=${WARTHOG_COMMIT}
 COPY . /code
 WORKDIR /code
 RUN --mount=type=cache,id=warthog-windows-sources,target=/code/subprojects/packagecache,sharing=locked \

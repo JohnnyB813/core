@@ -61,7 +61,9 @@ jobs:
           context: .
           file: dockerfiles/build_linux
           platforms: linux/amd64
-          build-args: BUILD_JOBS=2
+          build-args: |
+            BUILD_JOBS=2
+            WARTHOG_COMMIT=${{ github.sha }}
           load: true
           tags: warthog-node:ci
           cache-from: type=gha,scope=warthog-linux-amd64
@@ -80,7 +82,9 @@ jobs:
           file: dockerfiles/build_linux
           target: test-runtime
           platforms: linux/amd64
-          build-args: BUILD_JOBS=2
+          build-args: |
+            BUILD_JOBS=2
+            WARTHOG_COMMIT=${{ github.sha }}
           load: true
           tags: warthog-latency-tests:ci
           cache-from: type=gha,scope=warthog-linux-amd64
@@ -105,7 +109,9 @@ jobs:
           context: .
           file: dockerfiles/build_linux
           platforms: linux/amd64
-          build-args: BUILD_JOBS=2
+          build-args: |
+            BUILD_JOBS=2
+            WARTHOG_COMMIT=${{ github.sha }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

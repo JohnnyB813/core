@@ -95,6 +95,8 @@ ChainDB::ChainDB(const std::string& path, const std::string& mode)
     // lookup deterministic without imposing uniqueness on confirmed history.
     , stmtHistoryLookup(db,
           "SELECT `id`, `data` FROM `History` WHERE `hash`=? ORDER BY `id` ASC LIMIT 1")
+    , stmtHistoryLookupById(db,
+          "SELECT `hash`, `data` FROM `History` WHERE `id`=?")
     , stmtHistoryLookupRange(db,
           "SELECT `hash`, `data` FROM `History` WHERE `id`>=? AND`id`<?")
     , stmtAccountHistoryInsert(db, "INSERT INTO `AccountHistory` "
@@ -390,6 +392,16 @@ std::optional<std::pair<std::vector<uint8_t>, HistoryId>> ChainDB::lookup_histor
         o.get_vector(1),
         index
     };
+}
+
+std::optional<std::pair<std::vector<uint8_t>, Hash>> ChainDB::lookup_history(HistoryId id)
+{
+    if (id.value() > std::numeric_limits<int64_t>::max())
+        return {};
+    auto row = stmtHistoryLookupById.one(static_cast<int64_t>(id.value()));
+    if (!row.has_value())
+        return {};
+    return std::pair { row.get_vector(1), Hash { row.get_array<32>(0) } };
 }
 
 std::vector<std::pair<Hash, std::vector<uint8_t>>> ChainDB::lookupHistoryRange(HistoryId lower, HistoryId upper)

@@ -104,6 +104,7 @@ public:
     auto api_get_richlist(size_t N) -> API::Richlist;
     auto api_get_mempool(size_t) -> API::MempoolEntries;
     auto api_get_tx(HashView hash) const -> std::optional<API::Transaction>;
+    auto api_get_tx(HistoryId id) const -> std::optional<API::Transaction>;
     auto api_get_transaction_minfee() -> API::TransactionMinfee;
     auto api_get_latest_txs(size_t N = 100) const -> API::TransactionsByBlocks;
     auto api_get_header(API::HeightOrHash& h) const -> std::optional<std::pair<NonzeroHeight, Header>>;

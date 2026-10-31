@@ -33,7 +33,7 @@ METHOD| PATH | DESCRIPTION
 ------|------|------------
 `POST`  |`/transaction/add`| Send transactions
 `GET`   |`/transaction/mempool`| Show content of mempool
-`GET`   |`/transaction/lookup/:txid`| Transaction lookup
+`GET`   |`/transaction/lookup/:txid`| Transaction lookup by hash or history ID
 `GET`   |`/chain/head`| Show info on chain head
 `GET`   |`/chain/grid`| Show header grid (used for sync)
 `GET`   |`/chain/block/:id/hash`| Show hash of specific block
@@ -156,7 +156,9 @@ Send transactions in JSON format, returns transaction hash in hex format:
 
 ### `GET /transaction/lookup/:txid`
 
- If multiple confirmed transactions share a hash, lookup returns the earliest history entry. Pending transactions with that hash take precedence; if several are pending, lookup returns the one with the smallest transaction ID.
+Pass a 64-character transaction hash or a decimal history ID (for example, `/transaction/lookup/123`). A history ID identifies one confirmed entry in this node's current chain history, including when multiple entries share a hash. Pending transactions have no history ID. History IDs may change after a chain reorganization; use the hash when a stable transaction identifier is needed.
+
+Hash lookup checks pending transactions first. If several pending transactions share a hash, it returns the one with the smallest transaction ID. Otherwise, if several confirmed entries share a hash, it returns the earliest history entry.
 
  Transaction lookup by transaction id. Example output of `/transaction/lookup/4b3bc48295742b71ff7c3b98ede5b652fafd16c67f0d2db6226e936a1cdbf0a5`:
 

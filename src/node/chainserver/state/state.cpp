@@ -192,6 +192,43 @@ std::optional<API::Transaction> State::api_get_tx(const HashView txHash) const
     return {};
 }
 
+std::optional<API::Transaction> State::api_get_tx(const HistoryId id) const
+{
+    auto found = db.lookup_history(id);
+    if (!found || found->first.empty())
+        return {};
+
+    auto& [data, hash] = *found;
+    auto parsed { history::parse_throw(data) };
+    NonzeroHeight height { chainstate.history_height(id) };
+    if (std::holds_alternative<history::TransferData>(parsed)) {
+        auto& tx = std::get<history::TransferData>(parsed);
+        return API::TransferTransaction {
+            .txhash = hash,
+            .toAddress = db.fetch_account(tx.toAccountId).address,
+            .confirmations = (chainlength() - height) + 1,
+            .height = height,
+            .timestamp = chainstate.headers()[height].timestamp(),
+            .amount = tx.amount,
+            .fromAddress = db.fetch_account(tx.fromAccountId).address,
+            .fee = tx.compactFee.uncompact(),
+            .nonceId = tx.pinNonce.id,
+            .pinHeight = tx.pinNonce.pin_height(PinFloor(PrevHeight(height)))
+        };
+    }
+
+    assert(std::holds_alternative<history::RewardData>(parsed));
+    auto& reward = std::get<history::RewardData>(parsed);
+    return API::RewardTransaction {
+        .txhash = hash,
+        .toAddress = db.fetch_account(reward.toAccountId).address,
+        .confirmations = (chainlength() - height) + 1,
+        .height = height,
+        .timestamp = chainstate.headers()[height].timestamp(),
+        .amount = reward.miningReward
+    };
+}
+
 auto State::api_get_transaction_minfee() -> API::TransactionMinfee
 {
     return { chainstate.mempool().min_fee() };

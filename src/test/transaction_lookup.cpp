@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 static void check(bool value, const char* message)
 {
@@ -57,6 +58,18 @@ static void one(const std::string& path, const std::string& mode, const nlohmann
             const auto duplicate = db.lookup_history(hash);
             check(duplicate && duplicate->second == HistoryId(1) && duplicate->first == firstData,
                 "duplicate lookup selects the earliest history entry");
+            const auto firstById = db.lookup_history(HistoryId(1));
+            const auto rewardById = db.lookup_history(HistoryId(2));
+            const auto secondById = db.lookup_history(HistoryId(3));
+            check(firstById && firstById->first == firstData && firstById->second == hash,
+                "history ID 1 resolves the first transfer");
+            check(rewardById && rewardById->first == rewardEntry.data && rewardById->second == rewardEntry.hash,
+                "history ID 2 resolves the reward");
+            check(secondById && secondById->first == secondData && secondById->second == hash,
+                "history ID 3 distinguishes a same-hash transfer");
+            check(!db.lookup_history(HistoryId(0)) && !db.lookup_history(HistoryId(4))
+                    && !db.lookup_history(HistoryId(std::numeric_limits<uint64_t>::max())),
+                "missing and out-of-range history IDs stay empty");
         }
         const auto all = db.lookupHistoryRange(HistoryId(1), HistoryId(4));
         check(all.size() == 3 && all.front().first == hash && all.back().first == hash,
@@ -64,6 +77,9 @@ static void one(const std::string& path, const std::string& mode, const nlohmann
         BatchRegistry registry;
         chainserver::State state(db, registry, {});
         check(!state.api_get_tx(missing), "missing API lookup stays empty");
+        check(!state.api_get_tx(HistoryId(0)) && !state.api_get_tx(HistoryId(4))
+                && !state.api_get_tx(HistoryId(std::numeric_limits<uint64_t>::max())),
+            "missing and out-of-range API history IDs stay empty");
         const auto transaction = state.api_get_tx(hash);
         check(transaction && std::holds_alternative<API::TransferTransaction>(*transaction), "API returns a transfer");
         const auto& transfer = std::get<API::TransferTransaction>(*transaction);
@@ -76,12 +92,27 @@ static void one(const std::string& path, const std::string& mode, const nlohmann
         check(transfer.height == Height(1) && transfer.confirmations == 3
                 && transfer.timestamp == firstHeader.timestamp(),
             "API returns the earliest confirmation metadata");
+        const auto firstById = state.api_get_tx(HistoryId(1));
+        const auto secondById = state.api_get_tx(HistoryId(3));
+        check(firstById && std::holds_alternative<API::TransferTransaction>(*firstById)
+                && std::get<API::TransferTransaction>(*firstById).fromAddress == firstAddress,
+            "API history ID 1 returns the first sender");
+        check(secondById && std::holds_alternative<API::TransferTransaction>(*secondById),
+            "API history ID 3 returns a transfer");
+        const auto& secondTransfer = std::get<API::TransferTransaction>(*secondById);
+        check(secondTransfer.txhash == hash && secondTransfer.fromAddress == secondAddress
+                && secondTransfer.height == Height(3) && secondTransfer.confirmations == 1,
+            "API history ID 3 returns the second sender and confirmation");
         const auto rewardTransaction = state.api_get_tx(rewardEntry.hash);
         check(rewardTransaction && std::holds_alternative<API::RewardTransaction>(*rewardTransaction), "API reward lookup still works");
         const auto& foundReward = std::get<API::RewardTransaction>(*rewardTransaction);
         check(foundReward.toAddress == toAddress && foundReward.amount == reward.amount
                 && foundReward.height == Height(2) && foundReward.confirmations == 2,
             "API retains reward fields and confirmation metadata");
+        const auto rewardById = state.api_get_tx(HistoryId(2));
+        check(rewardById && std::holds_alternative<API::RewardTransaction>(*rewardById)
+                && std::get<API::RewardTransaction>(*rewardById).txhash == rewardEntry.hash,
+            "API history ID 2 returns the reward");
         state.append_gentx(secondPayment);
         const auto pending = state.api_get_tx(hash);
         check(pending && std::holds_alternative<API::TransferTransaction>(*pending), "pending lookup still works");
@@ -89,6 +120,10 @@ static void one(const std::string& path, const std::string& mode, const nlohmann
         check(pendingTransfer.fromAddress == secondAddress && pendingTransfer.height == Height(0)
                 && pendingTransfer.confirmations == 0,
             "pending transaction still takes precedence over confirmed matches");
+        const auto confirmedById = state.api_get_tx(HistoryId(1));
+        check(confirmedById && std::get<API::TransferTransaction>(*confirmedById).fromAddress == firstAddress
+                && std::get<API::TransferTransaction>(*confirmedById).height == Height(1),
+            "history ID lookup remains confirmed when the same hash is pending");
     };
 
     {
@@ -134,7 +169,7 @@ int main(int argc, char** argv) try
     one("", "delete", fixture);
     one((directory / "delete.db").string(), "delete", fixture);
     one((directory / "wal.db").string(), "wal", fixture);
-    std::cout << "transaction lookup: signed hash collisions, earliest metadata, ordinary/missing lookups and restart passed\n";
+    std::cout << "transaction lookup: hash collisions, distinct history IDs, bounds, pending precedence and restart passed\n";
 } catch (const std::exception& error) {
     std::cerr << "transaction lookup failed: " << error.what() << '\n';
     return 1;

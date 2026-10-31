@@ -1,5 +1,5 @@
 
-include_wh=[include_trezorcrypto,include_directories('./src')]
+include_wh=[include_trezorcrypto,include_directories('./src'),include_directories('.')]
 src_wh=[
     src_trezorcrypto,
   files(
@@ -41,8 +41,10 @@ configure_file(input : './src/version.hpp.in',
                configuration : conf_version)
 
 
-vcs_dep=vcs_tag(command : 
-  ['git', 'rev-parse', '--short', 'HEAD'],
-  input:'./src/commit_info.hpp.in',
-  output:'commit_info.hpp',
-  replace_string:'@GIT_COMMIT_INFO@')
+commit = run_command('sh', '-c', 'printf %s "${WARTHOG_COMMIT:-}"',
+  check : false).stdout().strip()
+conf_commit = configuration_data()
+conf_commit.set('GIT_COMMIT_INFO', commit == '' ? 'unknown' : commit)
+configure_file(input : './src/commit_info.hpp.in',
+               output : 'commit_info.hpp',
+               configuration : conf_commit)

@@ -2,6 +2,8 @@
 FROM alpine:3.23.6 AS build
 RUN apk add --no-cache meson libgcc musl-dev gcc g++ upx pkgconf fmt
 ARG BUILD_JOBS=2
+ARG WARTHOG_COMMIT=unknown
+ENV WARTHOG_COMMIT=${WARTHOG_COMMIT}
 COPY . /code
 WORKDIR /code
 # Cache downloaded sources, not the Meson build directory: a missing cache
