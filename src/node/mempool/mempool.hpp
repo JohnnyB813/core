@@ -56,9 +56,16 @@ public:
     [[nodiscard]] const Address& verified_address(HashView txHash) const
     {
         assert(master);
-        const auto iter = byHash.find(txHash);
-        assert(iter != byHash.end());
+        const auto iter = byHash.lower_bound(txHash);
+        assert(iter != byHash.end() && (*iter)->second.hash == txHash);
         return (*iter)->second.verifiedSender;
+    }
+    [[nodiscard]] const Address& verified_address(const TransactionId& txid) const
+    {
+        assert(master);
+        const auto iter = txs().find(txid);
+        assert(iter != txs().end());
+        return iter->second.verifiedSender;
     }
 
     // getters

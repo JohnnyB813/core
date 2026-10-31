@@ -91,8 +91,10 @@ ChainDB::ChainDB(const std::string& path, const std::string& mode)
     , stmtHistoryInsert(db, "INSERT INTO `History` (`id`,`hash`, `data`"
                             ") VALUES (?,?,?)")
     , stmtHistoryDeleteFrom(db, "DELETE FROM `History` WHERE `id`>=?")
+    // Transfer hashes can be shared by different senders. Keep this singular
+    // lookup deterministic without imposing uniqueness on confirmed history.
     , stmtHistoryLookup(db,
-          "SELECT `id`, `data` FROM `History` WHERE `hash`=?")
+          "SELECT `id`, `data` FROM `History` WHERE `hash`=? ORDER BY `id` ASC LIMIT 1")
     , stmtHistoryLookupRange(db,
           "SELECT `hash`, `data` FROM `History` WHERE `id`>=? AND`id`<?")
     , stmtAccountHistoryInsert(db, "INSERT INTO `AccountHistory` "

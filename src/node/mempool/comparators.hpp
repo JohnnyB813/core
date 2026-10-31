@@ -33,15 +33,13 @@ struct ComparatorHash {
     using is_transparent = std::true_type;
     inline bool operator()(const_iter_t i1, const_iter_t i2) const
     {
+        if (i1->second.hash == i2->second.hash)
+            return i1->first < i2->first;
         return i1->second.hash < i2->second.hash;
     }
     inline bool operator()(const_iter_t i1, const HashView rhs) const
     {
         return i1->second.hash < rhs;
-    }
-    inline bool operator()(HashView lhs, const_iter_t i2) const
-    {
-        return lhs < i2->second.hash;
     }
 };
 }

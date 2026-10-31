@@ -80,8 +80,8 @@ std::optional<TransferTxExchangeMessage> Mempool::operator[](const TransactionId
 
 std::optional<TransferTxExchangeMessage> Mempool::operator[](const HashView txHash) const
 {
-    auto iter = byHash.find(txHash);
-    if (iter == byHash.end())
+    auto iter = byHash.lower_bound(txHash);
+    if (iter == byHash.end() || (*iter)->second.hash != txHash)
         return {};
     assert((*iter)->second.hash == txHash);
     return TransferTxExchangeMessage { (*iter)->first, (*iter)->second };

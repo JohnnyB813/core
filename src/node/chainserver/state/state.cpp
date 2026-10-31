@@ -149,7 +149,7 @@ std::optional<API::Transaction> State::api_get_tx(const HashView txHash) const
             .confirmations = 0,
             .height = Height(0),
             .amount = tx.amount,
-            .fromAddress = chainstate.mempool().verified_address(txHash),
+            .fromAddress = chainstate.mempool().verified_address(tx.txid),
             .fee = tx.fee(),
             .nonceId = tx.txid.nonceId,
             .pinHeight = tx.pin_height(),
@@ -734,7 +734,7 @@ auto State::api_get_mempool(size_t n) -> API::MempoolEntries
     API::MempoolEntries out;
     for (size_t i = 0; i < hashes.size(); ++i) {
         out.entries.push_back(API::MempoolEntry {
-            entries[i], hashes[i], chainstate.mempool().verified_address(hashes[i]) });
+            entries[i], hashes[i], chainstate.mempool().verified_address(entries[i].txid) });
     }
     return out;
 }

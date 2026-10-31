@@ -156,6 +156,8 @@ Send transactions in JSON format, returns transaction hash in hex format:
 
 ### `GET /transaction/lookup/:txid`
 
+ If multiple confirmed transactions share a hash, lookup returns the earliest history entry. Pending transactions with that hash take precedence; if several are pending, lookup returns the one with the smallest transaction ID.
+
  Transaction lookup by transaction id. Example output of `/transaction/lookup/4b3bc48295742b71ff7c3b98ede5b652fafd16c67f0d2db6226e936a1cdbf0a5`:
 
  ```json

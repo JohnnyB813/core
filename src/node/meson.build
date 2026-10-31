@@ -200,6 +200,14 @@ block_lookup = executable('block_lookup', vcs_dep, '../test/block_lookup.cpp',
 test('Block lookup height and identity', block_lookup,
   args: files('../test/fixtures/genesis-mainnet.json'))
 
+transaction_lookup = executable('transaction_lookup', vcs_dep, '../test/transaction_lookup.cpp',
+  objects: node_runtime.extract_objects(node_source_files),
+  include_directories: ['./', include_thirdparty],
+  link_with: lib_thirdparty,
+  dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
+test('Transaction lookup hash collisions', transaction_lookup,
+  args: files('../test/fixtures/genesis-mainnet.json'))
+
 foreach group : ['http_payment_parsing', 'header_verifier', 'hashrate_reporting', 'timer_handles']
   correctness = executable(group, vcs_dep, '../test/' + group + '.cpp',
     objects: node_runtime.extract_objects(node_source_files),

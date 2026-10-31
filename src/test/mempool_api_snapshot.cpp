@@ -123,6 +123,68 @@ int main(int argc, char** argv) try
     const auto newHash = admitReused(second, 51, first.pubkey().address());
     check(reused.verified_address(oldHash) == first.pubkey().address(), "old transaction sender differs");
     check(reused.verified_address(newHash) == second.pubkey().address(), "sender cache confused reused account ID");
+
+    // Two valid senders can sign the same payment fields and share a hash.
+    const PrivKey recipient("0000000000000000000000000000000000000000000000000000000000000003");
+    const auto toAddress = recipient.pubkey().address();
+    const auto fee = CompactUInt::compact(Funds::from_value_throw(1));
+    const auto amount = Funds::from_value_throw(10);
+    const PaymentCreateMessage firstCollision { PinHeight(Height(0)), Hash::genesis(), first,
+        fee, toAddress, amount, NonceId(80) };
+    const PaymentCreateMessage secondCollision { PinHeight(Height(0)), Hash::genesis(), second,
+        fee, toAddress, amount, NonceId(80) };
+    const auto sharedHash = firstCollision.tx_hash(Hash::genesis());
+    check(sharedHash == secondCollision.tx_hash(Hash::genesis())
+            && firstCollision.valid_signature(Hash::genesis(), first.pubkey().address())
+            && secondCollision.valid_signature(Hash::genesis(), second.pubkey().address()),
+        "two valid signers reproduce a shared transaction hash");
+    const TransactionId firstId(AccountId(1), PinHeight(Height(0)), NonceId(80));
+    const TransactionId secondId(AccountId(2), PinHeight(Height(0)), NonceId(80));
+
+    mempool::Mempool peerPool;
+    const TransactionHeight txHeight(PinHeight(Height(0)), AccountHeight(1));
+    peerPool.insert_tx_throw(TransferTxExchangeMessage(AccountId(1), firstCollision), txHeight, sharedHash,
+        AddressFunds { first.pubkey().address(), Funds::from_value_throw(100000) });
+    peerPool.insert_tx_throw(TransferTxExchangeMessage(AccountId(2), secondCollision), txHeight, sharedHash,
+        AddressFunds { second.pubkey().address(), Funds::from_value_throw(100000) });
+    check(peerPool.size() == 2 && peerPool[firstId] && peerPool[secondId],
+        "peer admission retains both colliding transactions");
+
+    const auto firstAdded = state.append_gentx(firstCollision);
+    const auto secondAdded = state.append_gentx(secondCollision);
+    mempool::Mempool follower(false);
+    follower.apply_log(firstAdded.first);
+    follower.apply_log(secondAdded.first);
+    check(firstAdded.second == sharedHash && secondAdded.second == sharedHash
+            && follower.size() == 2 && follower[firstId] && follower[secondId],
+        "master and follower retain both colliding transactions");
+    const auto collisionSnapshot = state.api_get_mempool(2000);
+    check(collisionSnapshot.entries.size() == 2, "colliding transactions both appear in snapshot");
+    for (const auto& entry : collisionSnapshot.entries) {
+        check(entry.txHash == sharedHash
+                && entry.fromAddress == (entry.txid == firstId ? first.pubkey().address() : second.pubkey().address()),
+            "snapshot sender belongs to its exact transaction ID");
+    }
+    const auto selected = state.api_get_tx(sharedHash);
+    check(selected && std::get<API::TransferTransaction>(*selected).fromAddress == first.pubkey().address()
+            && follower[sharedHash] && follower[sharedHash]->txid == firstId,
+        "single hash lookup selects the first transaction and matching sender");
+    follower.erase(firstId);
+    check(follower.size() == 1 && follower[sharedHash] && follower[sharedHash]->txid == secondId,
+        "erasing one colliding follower entry preserves the other");
+    follower.apply_log(firstAdded.first);
+    check(follower.size() == 2 && follower[sharedHash]->txid == firstId,
+        "follower replay restores deterministic hash lookup order");
+
+    const PaymentCreateMessage collisionReplacement { PinHeight(Height(0)), Hash::genesis(), first,
+        CompactUInt::compact(Funds::from_value_throw(2)), toAddress, amount, NonceId(80) };
+    const auto replacementAdded = state.append_gentx(collisionReplacement);
+    follower.apply_log(replacementAdded.first);
+    const auto remaining = state.api_get_tx(sharedHash);
+    check(replacementAdded.second != sharedHash && follower.size() == 2
+            && follower[sharedHash] && follower[sharedHash]->txid == secondId
+            && remaining && std::get<API::TransferTransaction>(*remaining).fromAddress == second.pubkey().address(),
+        "replacement removes only its own hash entry");
     std::cout << "Mempool API snapshots: multiple payers, pending lookup, replacement, owned lifetime and reused IDs passed\n";
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
