@@ -7,6 +7,6 @@ type HpModule={generateKeys:(privateKeyHex?:string)=>Promise<HpKeys>;createClien
 export function loadHotPocket():HpModule{
   const require=createRequire(import.meta.url);
   const path=require.resolve('hotpocket-js-client');
-  if(createHash('sha256').update(readFileSync(path)).digest('hex')!=='1cb1fa479e862d17983b1f0dda33e6173940f80afd9bb5ec1714bb6fd989e86c')throw new Error('Strict HotPocket client patch is required before any connection');
+  if(createHash('sha256').update(readFileSync(path)).digest('hex')!=='e9413d49d22f907de6167c0b70be13005848c9a2c25264d0fbb151317fa4d39b')throw new Error('Strict HotPocket client patch is required before any connection');
   return require('hotpocket-js-client') as HpModule;
 }

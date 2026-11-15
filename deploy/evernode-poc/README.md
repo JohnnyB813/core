@@ -59,7 +59,7 @@ The root bootstrap path is separately checked with only the file-ownership, file
 docker run --rm --user=0:0 --network=none --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 warthog-poc-gateway-tests:compat node --test --test-concurrency=1 tests/platform-tls-container.test.ts
 ```
 
-The production base image and Alpine packages are pinned. npm dependencies are locked. The controller bundle targets the standard Node 16 HotPocket bootstrap runtime; a live runtime compatibility check remains required. Record the final published container digest before renting.
+The production base image and Alpine packages are pinned. npm dependencies are locked. The controller bundle targets Node 16 syntax and is also exercised through the native Node 20 SDK fixture; a live cluster check is required for each deployment. Record the final published container digest before renting.
 
 ## Compatibility deployment
 
@@ -92,6 +92,34 @@ For later fleet configuration, provide a validated JSON file through `PILOT_CONF
 `deploy/pilot-identity.json` contains only the new contract ID and reporter public keys. The protected private store is excluded from source exports and Docker contexts. Operator identity preparation is maintained locally; it is not part of the deployed application.
 
 Full acceptance still requires measured catch-up to independent mainnet data, a restart after full sync, verified gateway TLS, SDK acquisition/metadata, live controller quorum and recovery, a capped user-approved fleet allocation, controlled failures, and the planned soak. A short successful storage test is not a substitute for those gates.
+
+## Runtime revisions and controller reads
+
+The pilot supervisor supports signed, append-only configuration revisions for a
+single worker replacement. Each revision preserves the controller pins, health
+policy, initial setup receipt and reporter private key. Worker configuration
+changes restart the reporter; gateway changes also reload its proxy. The private
+control API reports the installed revision separately from the applied revision.
+
+`deploy/discover-controller.ts` obtains an initial public controller identity
+through a certificate-verified WSS connection and a native Ed25519 challenge,
+using a disposable client key. All later controller traffic uses that stored pin.
+The native initialization fixture exercises the actual `new` and `run /contract`
+entrypoint shapes before publishing an image.
+
+The canary modules contain a fixed one-payment policy, paired four-of-five
+operation/health checks, independent signed-blob verification and a durable
+prepare/dispatch journal. Offline tests cover duplicate callers, restart, lost
+submission responses and failed durable writes. A live ledger adapter, bounded
+canary funding and installation are separate validation steps; this code alone
+does not perform a live renewal.
+
+Controller polling has separate connection, response and disposal deadlines. The
+locked Node client validates TLS certificates, caps frames and terminates disposed
+sockets when a peer stalls. Isolated TLS fixtures exercise stalled HTTP upgrades
+and stalled native handshakes, including actual socket cleanup. The compiled
+contract fixture uses native SDK file descriptors under Node 20 and checks
+persistent consensus state and unchanged state during read-only queries.
 
 ## Primary interface references
 

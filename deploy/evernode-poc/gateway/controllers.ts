@@ -5,7 +5,8 @@ import {stateHash} from '../controller/registry.ts';
 import type {Snapshot,VerifiedControllerReply} from '../controller/registry.ts';
 export type ControllerEndpoint={id:string;url:string;serverKey:string};
 export type History={controllerId:string;observedAt:number;entries:{snapshot:Snapshot;stateHash:string}[]};
-function parseHistory(value:string|Uint8Array|null,contractId:string):History['entries']{
+async function deadline<T>(pending:Promise<T>,ms:number):Promise<T>{let timer:NodeJS.Timeout|undefined;try{return await Promise.race([pending,new Promise<T>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Controller read deadline')),ms);})]);}finally{clearTimeout(timer);}}
+export function parseHistory(value:string|Uint8Array|null,contractId:string):History['entries']{
   if(value===null)return[];
   const text=typeof value==='string'?value:Buffer.from(value).toString('utf8');
   if(Buffer.byteLength(text)>65536)throw new Error('Controller history exceeds byte limit');
@@ -42,14 +43,14 @@ export class ControllerPoller{
   readonly keys:Promise<HpKeys>;
   readonly active=new Set<HpClient>();
   closed=false;
-  constructor(contractId:string,endpoints:ControllerEndpoint[]){this.contractId=contractId;this.endpoints=endpoints;this.hp=loadHotPocket();this.keys=this.hp.generateKeys();}
+  constructor(contractId:string,endpoints:ControllerEndpoint[],hp:ReturnType<typeof loadHotPocket>=loadHotPocket()){this.contractId=contractId;this.endpoints=endpoints;this.hp=hp;this.keys=this.hp.generateKeys();}
   async poll():Promise<History[]>{return Promise.all(this.endpoints.map(endpoint=>this.readOne(endpoint)));}
   async readOne(endpoint:ControllerEndpoint):Promise<History>{
     const empty=():History=>({controllerId:endpoint.id,observedAt:Date.now(),entries:[]});
     if(this.closed)return empty();
     let client:HpClient|undefined,invalid=false,closing=false,connections=0;
     try{
-      client=await this.hp.createClient([endpoint.url],await this.keys,{contractId:this.contractId,trustedServerKeys:[endpoint.serverKey],requiredConnectionCount:1,connectionTimeoutMs:1500});
+      client=await this.hp.createClient([endpoint.url],await deadline(this.keys,2000),{contractId:this.contractId,trustedServerKeys:[endpoint.serverKey],requiredConnectionCount:1,connectionTimeoutMs:1500});
       this.active.add(client);
       client.on(this.hp.events.connectionChange,(server,change)=>{
         if(closing)return;
@@ -57,12 +58,12 @@ export class ControllerPoller{
       });
       // A new client is used for every poll. The SDK learns UNL keys internally;
       // closing on any disconnect prevents that behavior from broadening a pin.
-      if(!await client.connect()||invalid||this.closed)return empty();
-      const result=await client.submitContractReadRequest(JSON.stringify({type:'registry-history'}),'registry',1500);
+      if(!await deadline(client.connect(),2500)||invalid||this.closed)return empty();
+      const result=await deadline(client.submitContractReadRequest(JSON.stringify({type:'registry-history'}),'registry',1500),2000);
       if(invalid||this.closed)return empty();
       return{controllerId:endpoint.id,observedAt:Date.now(),entries:parseHistory(result,this.contractId)};
     }catch{return empty();}
-    finally{closing=true;if(client){await client.close().catch(()=>{});this.active.delete(client);}}
+    finally{closing=true;if(client){await deadline(client.close().catch(()=>{}),500).catch(()=>{});this.active.delete(client);}}
   }
-  async close():Promise<void>{this.closed=true;await Promise.all([...this.active].map(client=>client.close().catch(()=>{})));}
+  async close():Promise<void>{this.closed=true;await Promise.all([...this.active].map(client=>deadline(client.close().catch(()=>{}),500).catch(()=>{})));}
 }

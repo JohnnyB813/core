@@ -4,6 +4,7 @@ import {stagePlatformTls} from '../gateway/platform-tls.ts';
 import {FaultController} from '../fault/controller.ts';
 import {FileControlStore} from '../fault/store.ts';
 import {SetupInstaller} from '../fault/setup.ts';
+import {ConfigUpdater} from '../fault/config-update.ts';
 import {startControlServer} from '../fault/server.ts';
 import {ManagedProcess} from './process.ts';
 import {resources} from './resources.ts';
@@ -32,21 +33,24 @@ if(mode!=='controller'&&process.getuid?.()===0){
 }
 if(mode!=='controller'&&process.getuid?.()!==1000)throw new Error('Worker and gateway runtimes require UID 1000');
 let application:ManagedProcess|null=null,reporter:ManagedProcess|null=null,stopping=false;
+let processChanges:Promise<unknown>=Promise.resolve(),appliedConfigHash:string|null=null,appliedRevision:number|null=null;
+function changeApplication<T>(work:()=>Promise<T>):Promise<T>{const next=processChanges.then(work);processChanges=next.catch(()=>{});return next;}
 const abort=new AbortController();
-const target={pause:async()=>{if(!application?.running)throw new Error('Pilot application is not running');await application.pause();},resume:async()=>{await application?.resume();}};
+const target={pause:()=>changeApplication(async()=>{if(!application?.running)throw new Error('Pilot application is not running');await application.pause();}),resume:()=>changeApplication(async()=>{await application?.resume();})};
 const controller=await FaultController.create({contractId:identity.contractId,targetId:role,operatorPublicKey:operator.operatorPublicKey},target,new FileControlStore(stateDirectory+'/controls.json'));
 const reporterIdentity=identity.reporters.find(item=>item.id===role);
 if(mode!=='controller'&&!reporterIdentity)throw new Error('The runtime reporter identity is missing');
 const installer=reporterIdentity?new SetupInstaller({contractId:identity.contractId,targetId:role,generation:()=>controller.status().generation,operatorPublicKey:operator.operatorPublicKey,reporterPublicKey:reporterIdentity.publicKey,directory:stateDirectory+'/setup'}):undefined;
+const updater=installer?new ConfigUpdater({contractId:identity.contractId,targetId:role,generation:()=>controller.status().generation,operatorPublicKey:operator.operatorPublicKey,directory:stateDirectory+'/config-updates',initialFile:stateDirectory+'/setup/config.json',initialHash:async()=>{const status=await installer.status();if(!status.installed)throw new Error('Initial setup is unavailable');return status.receipt.configHash;},paused:()=>controller.status().paused}):undefined;
 const imageDigest=process.env.IMAGE_DIGEST?.replace(/^@/,'');
 const readAdapter=mode==='worker'?workerApi(allocatedPort('INTERNAL_USER_PORT')):undefined;
 const egress=new EgressObservation();egress.start();
-const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,network:egress.current(),resources:await resources(dataDirectory)}),readAdapter);
-async function startApplication(configured:boolean):Promise<ManagedProcess>{
+const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,network:egress.current(),configuration:{revision:appliedRevision,configHash:appliedConfigHash},resources:await resources(dataDirectory)}),readAdapter,updater);
+async function startApplication(configuration?:string):Promise<ManagedProcess>{
   const environment={...process.env};
   let created:ManagedProcess;
   if(mode==='gateway'){
-    if(configured)environment.PILOT_CONFIG=stateDirectory+'/setup/config.json';else delete environment.PILOT_CONFIG;
+    if(configuration)environment.PILOT_CONFIG=configuration;else delete environment.PILOT_CONFIG;
     created=await ManagedProcess.launch(process.execPath,['/app/gateway/supervised.ts'],environment);
   }else if(mode==='worker')created=await ManagedProcess.launch('/app/worker/entrypoint.sh',[],environment);
   else created=await ManagedProcess.launch('/usr/local/bin/hotpocket/hpcore',controllerArguments.length?controllerArguments:['run','/contract'],environment);
@@ -63,16 +67,22 @@ process.once('uncaughtException',()=>{console.error(JSON.stringify({event:'runti
 process.once('unhandledRejection',()=>{console.error(JSON.stringify({event:'runtime-failed',role}));process.exitCode=1;void stop();});
 try{
   const existing=await installer?.status();
-  application=await startApplication(existing?.installed===true);
+  const initial=existing?.installed?await updater!.current():undefined;
+  application=await startApplication(initial?.path);appliedConfigHash=initial?.configHash??null;appliedRevision=initial?.revision??null;
   console.log(JSON.stringify({event:'pilot-runtime-start',role,mode,uid:process.getuid?.(),controlPort,setupInstalled:existing?.installed===true,tlsExpiresAt:tls.expiresAt}));
-  if(installer){
+  if(installer&&updater){
     while(!stopping){
       if((await installer.status()).installed){
-        if(mode==='gateway'&&!existing?.installed){await application.stop();if(stopping)break;application=await startApplication(true);}
-        if(stopping)break;
-        reporter=await ManagedProcess.launch(process.execPath,['/app/reporter/main.ts'],{...process.env,PILOT_CONFIG:stateDirectory+'/setup/config.json',REPORTER_ID:role,REPORTER_KEY_FILE:stateDirectory+'/setup/reporter.key',REPORTER_SEQUENCE_FILE:stateDirectory+'/reporter-sequence.json'});
-        if(stopping){await reporter.stop();break;}
-        console.log(JSON.stringify({event:'runtime-reporter-start',role}));break;
+        const current=await updater.current();
+        if((!reporter||current.configHash!==appliedConfigHash)&&!controller.status().paused){
+          await reporter?.stop();reporter=null;if(stopping)break;
+          if(mode==='gateway'&&current.configHash!==appliedConfigHash)await changeApplication(async()=>{await application!.stop();if(stopping)return;application=await startApplication(current.path);if(controller.status().paused)await application.pause();});
+          if(stopping)break;
+          reporter=await ManagedProcess.launch(process.execPath,['/app/reporter/main.ts'],{...process.env,PILOT_CONFIG:current.path,REPORTER_ID:role,REPORTER_KEY_FILE:stateDirectory+'/setup/reporter.key',REPORTER_SEQUENCE_FILE:stateDirectory+'/reporter-sequence.json'});
+          if(stopping){await reporter.stop();break;}
+          appliedConfigHash=current.configHash;appliedRevision=current.revision;
+          console.log(JSON.stringify({event:'runtime-reporter-start',role,configurationRevision:current.revision}));
+        }
       }
       await delay(1000,undefined,{signal:abort.signal}).catch(()=>{});
     }

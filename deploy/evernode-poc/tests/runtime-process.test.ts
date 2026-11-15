@@ -10,10 +10,13 @@ import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {signControl} from '../fault/protocol.ts';
 import {signSetup} from '../fault/setup.ts';
+import {signConfigUpdate} from '../fault/config-update.ts';
+import type {ConfigUpdate} from '../fault/config-update.ts';
+import {parseConfig} from '../gateway/config.ts';
 import type {ControlRequest} from '../fault/protocol.ts';
 import type {SetupRequest} from '../fault/setup.ts';
 
-type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;resources:{memoryLimitBytes:number|null;volumeId:string|null;starts:number|null;quotaBytesVerified:boolean}}};
+type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;configuration:{revision:number|null;configHash:string|null};resources:{memoryLimitBytes:number|null;volumeId:string|null;starts:number|null;quotaBytesVerified:boolean}}};
 const fixture=JSON.parse(await readFile('tests/runtime-secrets.json','utf8')) as {contractId:string;operator:string;reporters:Record<string,string>};
 const ca=await readFile('/contract/cfg/tlscert.pem');
 const configuration={contractId:fixture.contractId,controllers:['c1','c2','c3','c4','c5'],controllerEndpoints:[1,2,3,4,5].map(i=>({id:'c'+i,url:'wss://127.0.0.1:'+(9800+i)+'/',serverKey:'ed'+String(i).repeat(64)})),backends:[1,2,3].map(i=>({id:'w'+i,url:'http://127.0.0.1:'+(3000+i)})),reference:'https://reference.example',policy:{checkpoint:{height:5000000,hash:'a'.repeat(64)},minimumHeight:5000000,maxLag:3,minPeers:2,maxLatencyMs:3000,freshnessMs:30000}};
@@ -51,6 +54,14 @@ async function pause(role:string,port:number,status:Status){
   const command:ControlRequest={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),action:'pause',issuedAt:Date.now(),durationMs:600};
   assert.equal((await request(port,'/pilot/control',command,signControl(command,fixture.operator))).status,200);
 }
+async function replaceConfiguration(role:string,port:number,status:Status){
+  const before=(await request(port,'/pilot/configuration')).body as {revision:number;configHash:string};
+  const keyPath=role==='w1'?'/warthog/.warthog/pilot/setup/reporter.key':'/pilotdata/setup/reporter.key',key=await readFile(keyPath,'utf8');
+  const update:ConfigUpdate={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),issuedAt:Date.now(),revision:before.revision+1,previousHash:before.configHash,config:parseConfig({...configuration,backends:configuration.backends.map(b=>b.id==='w2'?{...b,url:'https://127.0.0.1:33001'}:b)})};
+  assert.equal((await request(port,'/pilot/configuration',update,signConfigUpdate(update,fixture.operator))).status,200);
+  await until(async()=>((await request(port,'/pilot/status')).body as Status),value=>value.observations.configuration.revision===1&&value.observations.reporterRunning&&value.observations.applicationRunning);
+  assert.equal(await readFile(keyPath,'utf8'),key);assert.equal(((await request(port,'/pilot/setup')).body as {installed:boolean}).installed,true);
+}
 
 test('worker runtime uses mapped ports, persists data across restart and starts its protected reporter',{timeout:45000},async t=>{
   let current=launch('worker');t.after(async()=>{await stop(current.child);});
@@ -66,6 +77,7 @@ test('worker runtime uses mapped ports, persists data across restart and starts 
     assert.match(current.logs(),/P2P endpoint is 0\.0\.0\.0:9186\./);assert.match(current.logs(),/P2P advertised port is 30212\./);assert.match(current.logs(),/RPC endpoint is 127\.0\.0\.1:3000\./);
     const marker=(await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim();
     const beforeStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(beforeStatus.observations.resources.volumeId,marker);assert.equal(beforeStatus.observations.resources.starts,1);assert.equal(beforeStatus.observations.resources.quotaBytesVerified,false);
+    await replaceConfiguration('w1',9444,status);assert.equal(((await request(9444,'/pilot/status')).body as Status).observations.resources.starts,1);
     await pause('w1',9444,status);await assert.rejects(request(3001,'/chain/head',undefined,undefined,150,false));
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
     await stop(current.child);current=launch('worker');
@@ -73,6 +85,7 @@ test('worker runtime uses mapped ports, persists data across restart and starts 
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
     assert.equal((await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim(),marker);assert.match(current.logs(),/restored=1 starts=2/);assert.match(current.logs(),/mode=network/);
     const afterStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(afterStatus.observations.resources.volumeId,marker);assert.equal(afterStatus.observations.resources.starts,2);
+    assert.equal(afterStatus.observations.configuration.revision,1);
   }catch(error){console.error(current.logs().split('\n').filter(line=>!/private.?key|secret|password|ed[0-9a-f]{128}/i.test(line)).join('\n'));throw error;}
 });
 test('gateway runtime reloads only verified setup and pauses its whole proxy process group',{timeout:45000},async t=>{
@@ -85,6 +98,8 @@ test('gateway runtime reloads only verified setup and pauses its whole proxy pro
     await until(async()=>((await request(9445,'/pilot/status')).body as Status),value=>value.observations.applicationRunning&&value.observations.reporterRunning);
     await until(()=>request(8443,'/chain/head'),value=>value.status===503);
     assert.equal((await request(8443,'/settings')).status,403);
+    assert.equal((await request(8443,'/pilot/configuration')).status,403);
+    await replaceConfiguration('g1',9445,status);await until(()=>request(8443,'/chain/head'),value=>value.status===503);
     await pause('g1',9445,status);await assert.rejects(request(8443,'/status',undefined,undefined,150));
     await until(()=>request(8443,'/status'),value=>value.status===200);
   }catch(error){console.error(current.logs().split('\n').filter(line=>!/private.?key|secret|password|ed[0-9a-f]{128}/i.test(line)).join('\n'));throw error;}

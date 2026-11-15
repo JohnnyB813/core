@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:https';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {once} from 'node:events';
+import {setTimeout as delay} from 'node:timers/promises';
+import type {Duplex} from 'node:stream';
+import {ControllerPoller} from '../gateway/controllers.ts';
+const require=createRequire(import.meta.url),{WebSocketServer}=require('ws');
+const tls={key:await readFile('/contract/cfg/tlskey.pem'),cert:await readFile('/contract/cfg/tlscert.pem')};
+for(const stage of ['http-upgrade','hotpocket-handshake'])test('real SDK releases sockets stalled during '+stage,{timeout:8000},async t=>{
+  const server=createServer(tls),sockets=new Set<Duplex>(),websockets=new WebSocketServer({noServer:true});let upgrades=0;
+  server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
+  server.on('upgrade',(request,socket,head)=>{upgrades++;if(stage==='hotpocket-handshake')websockets.handleUpgrade(request,socket,head,()=>{});});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  t.after(async()=>{for(const socket of sockets)socket.destroy();for(const ws of websockets.clients)ws.terminate();websockets.close();await new Promise<void>(resolve=>server.close(()=>resolve()));});
+  const address=server.address();assert(address&&typeof address==='object');
+  const poller=new ControllerPoller('11111111-2222-4333-8444-555555555555',[{id:'c1',url:'wss://127.0.0.1:'+address.port+'/',serverKey:'ed'+'12'.repeat(32)}]);
+  t.after(()=>poller.close());const start=performance.now(),result=await poller.poll();await poller.close();
+  assert(performance.now()-start<4000);assert.equal(result.length,1);assert.equal(result[0].entries.length,0);
+  assert.equal(upgrades,1,'strict TLS must complete before the stalled protocol stage is exercised');
+  for(let i=0;i<10&&sockets.size;i++)await delay(20);
+  assert.equal(sockets.size,0,'disposed clients must close actual TCP sockets');assert.equal(poller.active.size,0);
+});
