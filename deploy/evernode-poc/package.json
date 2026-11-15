@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts tests/host-api.test.ts tests/fault.test.ts tests/setup.test.ts tests/acquire.test.ts tests/worker-api.test.ts",
+    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts tests/host-api.test.ts tests/fault.test.ts tests/setup.test.ts tests/acquire.test.ts tests/worker-api.test.ts tests/controller-bundle.test.ts tests/bootstrap.test.ts tests/operations.test.ts tests/egress.test.ts tests/maintenance.test.ts",
     "prepare-client": "node deploy/patch-hotpocket.cjs",
     "build:controller": "esbuild controller/entry.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist/controller/contract.cjs",
     "preflight": "node deploy/preflight.ts"
@@ -18,7 +18,8 @@
     "esbuild": "0.25.11",
     "evernode-js-client": "0.6.61",
     "hotpocket-nodejs-contract": "0.7.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "bson": "4.5.3"
   },
   "dependencies": {
     "hotpocket-js-client": "0.5.7"

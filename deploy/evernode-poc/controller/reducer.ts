@@ -1,12 +1,16 @@
 import {isHash,isHeight,object,parseHead} from '../shared/health.ts';
 import type {Head,Checkpoint,Policy} from '../shared/health.ts';
 import type {Snapshot} from './registry.ts';
-export type ControllerConfig={contractId:string;workers:string[];reporters:string[];policy:Policy};
+import {initialOperations,reduceOperations} from './operations.ts';
+import type {OperationState} from './operations.ts';
+import {reduceMaintenance} from './maintenance.ts';
+import type {Maintenance} from './maintenance.ts';
+export type ControllerConfig={contractId:string;workers:string[];reporters:string[];policy:Policy;operationOwner?:string;operationExecutor?:string};
 export type WorkerReport={id:string;reachable:boolean;head?:Head;peers?:number;checkpointHash?:string|null;latencyMs?:number;common?:Checkpoint};
 export type Report={sequence:number;observedAt:number;workers:WorkerReport[]};
 export type AuthenticatedInput={publicKey:string;body:unknown};
 type Decision={eligible:boolean;successes:number;failures:number;lastCounted:Record<string,number>;reason:string};
-export type PoolState={sequence:number;committedAt:number;reports:Record<string,Report>;lastSequences:Record<string,number>;decisions:Record<string,Decision>;probeHistory:{height:number;createdAt:number}[];snapshots:Snapshot[]};
+export type PoolState={sequence:number;committedAt:number;reports:Record<string,Report>;lastSequences:Record<string,number>;decisions:Record<string,Decision>;probeHistory:{height:number;createdAt:number}[];snapshots:Snapshot[];operations?:OperationState;maintenance?:Maintenance};
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const lexical=(a:string,b:string):number=>a<b?-1:a>b?1:0;
 export function initialState(config:ControllerConfig):PoolState {
@@ -35,6 +39,9 @@ function basic(w:WorkerReport,policy:Policy):boolean{return Boolean(w.reachable&
 export function reduceRound(previous:PoolState,config:ControllerConfig,now:number,inputs:AuthenticatedInput[]):PoolState {
   if(!Number.isSafeInteger(now)||now<previous.committedAt||inputs.length>100)throw new Error('Invalid round');
   const state=clone(previous);
+  const maintenance=reduceMaintenance(state.maintenance||{revision:0,excludedWorkers:[]},config.operationOwner,now,inputs);
+  if(maintenance.revision!==(state.maintenance?.revision??0))for(const decision of Object.values(state.decisions)){decision.successes=0;decision.failures=0;decision.lastCounted={...state.lastSequences};}
+  state.maintenance=maintenance;
   const candidates=new Map<string,Map<number,Report[]>>();
   for(const input of inputs){
     if(!config.reporters.includes(input.publicKey))continue;
@@ -70,6 +77,7 @@ export function reduceRound(previous:PoolState,config:ControllerConfig,now:numbe
   const agreed=pairs[0];
   for(const id of [...config.workers].sort()){
     const decision=state.decisions[id],summary=summaries.get(id);
+    if(maintenance.excludedWorkers.includes(id)){decision.eligible=false;decision.successes=0;decision.failures=0;decision.lastCounted={...state.lastSequences};decision.reason='operator-maintenance';continue;}
     const healthy=Boolean(agreed&&summary&&(summary.groups.get(agreed.common)||0)>=3&&Math.abs(agreed.referenceHeight-summary.height)<=config.policy.maxLag);
     decision.reason=healthy?'healthy':fresh.length<3?'missing-report-quorum':summary?'no-current-chain-agreement':'semantic-health-failed';
     // Expired telemetry is a hard safety gate, not a repeated synthetic failure.
@@ -91,5 +99,6 @@ export function reduceRound(previous:PoolState,config:ControllerConfig,now:numbe
   state.sequence++;state.committedAt=now;
   const snapshot:Snapshot={contractId:config.contractId,sequence:state.sequence,committedAt:now,eligible:Object.keys(state.decisions).filter(id=>state.decisions[id].eligible).sort(),probeHeight:state.probeHistory.at(-1)?.height??config.policy.checkpoint.height};
   state.snapshots=[...state.snapshots,snapshot].slice(-10);
+  state.operations=reduceOperations(state.operations||initialOperations(),config.contractId,config.operationOwner,config.operationExecutor,now,inputs,snapshot,maintenance);
   return state;
 }

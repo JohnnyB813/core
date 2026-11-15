@@ -8,6 +8,7 @@ import {startControlServer} from '../fault/server.ts';
 import {ManagedProcess} from './process.ts';
 import {resources} from './resources.ts';
 import {workerApi} from './worker-api.ts';
+import {EgressObservation} from './egress.ts';
 import identity from '../deploy/pilot-identity.json' with {type:'json'};
 import operator from '../deploy/fault-operator.json' with {type:'json'};
 
@@ -37,7 +38,8 @@ if(mode!=='controller'&&!reporterIdentity)throw new Error('The runtime reporter 
 const installer=reporterIdentity?new SetupInstaller({contractId:identity.contractId,targetId:role,generation:()=>controller.status().generation,operatorPublicKey:operator.operatorPublicKey,reporterPublicKey:reporterIdentity.publicKey,directory:stateDirectory+'/setup'}):undefined;
 const imageDigest=process.env.IMAGE_DIGEST?.replace(/^@/,'');
 const readAdapter=mode==='worker'?workerApi(allocatedPort('INTERNAL_USER_PORT')):undefined;
-const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,resources:await resources(dataDirectory)}),readAdapter);
+const egress=new EgressObservation();egress.start();
+const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,network:egress.current(),resources:await resources(dataDirectory)}),readAdapter);
 async function startApplication(configured:boolean):Promise<ManagedProcess>{
   const environment={...process.env};
   let created:ManagedProcess;
@@ -51,6 +53,7 @@ async function startApplication(configured:boolean):Promise<ManagedProcess>{
 }
 async function stop(){
   if(stopping)return;stopping=true;abort.abort();
+  egress.stop();
   await control.close().catch(()=>{});await reporter?.stop().catch(()=>{});await application?.stop().catch(()=>{});
 }
 process.once('SIGTERM',()=>{void stop();});process.once('SIGINT',()=>{void stop();});

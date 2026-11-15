@@ -59,6 +59,7 @@ test('worker runtime uses mapped ports, persists data across restart and starts 
     assert.equal(status.observations.role,'w1');assert.ok(status.observations.resources.memoryLimitBytes);
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
     const tlsHead=await request(9444,'/chain/head');assert.equal(tlsHead.status,200);assert.equal((tlsHead.body as {code:number}).code,0);
+    for(let i=0;i<6;i++){assert.equal((await request(9444,'/chain/head')).status,200);assert.equal((await request(9444,'/peers/connected/connection')).status,200);}
     assert.equal((await request(9444,'/settings')).status,404);
     await install('w1',9444,status);
     await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.reporterRunning);
