@@ -196,7 +196,7 @@ void Connection::send_handshake()
     memcpy(data + 14, &nver, 4);
     memset(data + 18, 0, 4);
     if (!inbound) {
-        uint16_t portBe = hton16(conman.bindAddress.port);
+        uint16_t portBe = hton16(conman.advertisedPort);
         memcpy(data + 22, &portBe, 2);
         async_send(std::unique_ptr<char[]>(data), 24);
     } else {

@@ -111,6 +111,7 @@ void Conman::async_validate(std::weak_ptr<Connection> c, bool accept, int64_t ro
 Conman::Conman(uv_loop_t* l, PeerServer& peerServer, const Config& config)
     : peerServer(peerServer)
     , bindAddress(config.node.bind)
+    , advertisedPort(config.node.advertisedPort.value_or(bindAddress.port))
 {
     int i;
     server.data = wakeup.data = nullptr;
@@ -121,6 +122,7 @@ Conman::Conman(uv_loop_t* l, PeerServer& peerServer, const Config& config)
     // only accept IPv4
     auto addr { bindAddress.sock_addr() };
     spdlog::info("P2P endpoint is {}.", bindAddress.to_string());
+    spdlog::info("P2P advertised port is {}.", advertisedPort);
     if ((i = uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0)))
         goto error;
     if ((i = uv_listen((uv_stream_t*)&server, DEFAULT_BACKLOG,

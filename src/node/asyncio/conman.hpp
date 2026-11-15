@@ -83,6 +83,7 @@ private:
         std::list<ReconnectTimer>::iterator iter;
     };
     const EndpointAddress bindAddress;
+    const uint16_t advertisedPort;
     //--------------------------------------
     // data accessed by libuv thread
     PerIpCounter perIpCounter;
