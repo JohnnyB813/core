@@ -150,6 +150,8 @@ websocket_probe = executable('websocket_probe', '../test/websocket_probe.cpp',
   dependencies: [sqlite3_dep, libuv_dep, uvw_dep, spdlog_dep])
 test_python = import('python').find_installation('python3', required: false)
 if test_python.found()
+  test('Mapped P2P advertisement and inbound handshake', test_python,
+    args: [files('../test/advertised_port.py'), node_runtime], timeout: 90)
   test('WebSocket subscribers and serialization', test_python,
     args: [files('../test/websocket_subscribers.py'), websocket_probe,
       files('../test/fixtures/genesis-mainnet.json')], timeout: 60)

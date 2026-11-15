@@ -261,6 +261,13 @@ int Config::process_gengetopt(gengetopt_args_info& ai)
                     for (auto& [k, v] : *t) {
                         if (k == "bind") {
                             nodeBind = fetch_endpointaddress(v);
+                        } else if (k == "advertise-port") {
+                            if (!v.is_integer())
+                                throw std::runtime_error("node.advertise-port must be an integer from 1 to 65535");
+                            const auto port = fetch<int64_t>(v);
+                            if (port < 1 || port > 65535)
+                                throw std::runtime_error("node.advertise-port must be an integer from 1 to 65535");
+                            node.advertisedPort = static_cast<uint16_t>(port);
                         } else if (k == "connect") {
                             peers.connect.clear();
                             toml::array& c = array_ref(v);
@@ -442,6 +449,8 @@ std::string Config::dump()
             { "log-communication", (bool)node.logCommunication },
             { "latency-log", node.latencyLog },
             { "block-peer-selection", node.blockPeerSelection } });
+    if (node.advertisedPort)
+        tbl["node"].as_table()->insert_or_assign("advertise-port", *node.advertisedPort);
     tbl.insert_or_assign("db", toml::table {
                                    { "chain-db", data.chaindb },
                                    { "peers-db", data.peersdb },
