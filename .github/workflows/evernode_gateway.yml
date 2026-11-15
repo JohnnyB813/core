@@ -51,6 +51,10 @@ jobs:
         run: |
           docker build --platform=linux/amd64 -f deploy/evernode-poc/runtime/controller.Dockerfile -t warthog-poc-controller:trial deploy/evernode-poc
           docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=64 --memory=128m --cpus=1 --entrypoint=node warthog-poc-controller:trial --check /app/supervisor.mjs
+      - name: Test the host's actual native initialization and run command shapes
+        run: |
+          docker build --platform=linux/amd64 -f deploy/evernode-poc/tests/controller.Dockerfile -t warthog-poc-controller-cli-tests:trial deploy/evernode-poc
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=64 --memory=256m --cpus=1 --tmpfs=/tmp:rw,nosuid,size=32m,mode=1777 warthog-poc-controller-cli-tests:trial
       - name: Log in to the existing public image package
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:

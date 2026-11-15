@@ -19,6 +19,8 @@ if(process.platform!=='linux')throw new Error('The pilot runtime requires Linux'
 function allocatedPort(name:string):number{const text=process.env[name]||'';if(!/^[1-9][0-9]{0,4}$/.test(text)||Number(text)>65535)throw new Error('A valid allocated '+name+' is required');return Number(text);}
 const controlPort=allocatedPort(mode==='gateway'?'INTERNAL_USER_PORT':'INTERNAL_GPTCP1_PORT');
 const dataDirectory=mode==='worker'?'/warthog/.warthog':'/pilotdata';
+const controllerArguments=process.argv.slice(2);
+if(mode==='controller'&&controllerArguments.length&&!(controllerArguments[0]==='run'&&controllerArguments[1]==='/contract'))throw new Error('Unexpected controller runtime arguments');
 const stateDirectory=dataDirectory+(mode==='worker'?'/pilot':'');
 await mkdir(dataDirectory,{recursive:true,mode:0o700});await mkdir(stateDirectory,{recursive:true,mode:0o700});await mkdir('/run/poc',{recursive:true});
 const tls=await stagePlatformTls();
@@ -47,7 +49,7 @@ async function startApplication(configured:boolean):Promise<ManagedProcess>{
     if(configured)environment.PILOT_CONFIG=stateDirectory+'/setup/config.json';else delete environment.PILOT_CONFIG;
     created=await ManagedProcess.launch(process.execPath,['/app/gateway/supervised.ts'],environment);
   }else if(mode==='worker')created=await ManagedProcess.launch('/app/worker/entrypoint.sh',[],environment);
-  else created=await ManagedProcess.launch('/usr/local/bin/hotpocket/hpcore',['run','/contract'],environment);
+  else created=await ManagedProcess.launch('/usr/local/bin/hotpocket/hpcore',controllerArguments.length?controllerArguments:['run','/contract'],environment);
   if(stopping){await created.stop();throw new Error('Runtime is stopping');}
   return created;
 }

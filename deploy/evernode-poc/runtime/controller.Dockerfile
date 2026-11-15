@@ -13,5 +13,6 @@ RUN ./node_modules/.bin/esbuild runtime/main.ts --bundle --platform=node --targe
 FROM evernode/sashimono@sha256:f65983ccbe6c99886b0c2b121e5891ebdddc549fb591d674bcdb4868940c7672
 WORKDIR /app
 COPY --from=bundle /bundle/supervisor.mjs /app/supervisor.mjs
+COPY --chmod=0555 runtime/controller-entrypoint.sh /app/controller-entrypoint.sh
 ENV PILOT_RUNTIME=controller
-ENTRYPOINT ["node","/app/supervisor.mjs"]
+ENTRYPOINT ["/app/controller-entrypoint.sh"]

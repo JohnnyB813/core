@@ -5,7 +5,7 @@ import {join,dirname,basename} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {serialize,deserialize} from 'bson';
-import {BootstrapUploader,validateUploadPlan} from '../deploy/bootstrap-client.ts';
+import {BootstrapUploader,validateUploadPlan,inspectBootstrap} from '../deploy/bootstrap-client.ts';
 import type {UploadPlan,UploadJournal,UploadReceipt,UploadTarget} from '../deploy/bootstrap-client.ts';
 import type {HpClient,HpKeys} from '../shared/hotpocket.ts';
 import {FileUploadJournal} from '../deploy/upload-journal.ts';
@@ -26,6 +26,10 @@ function mock(mode:'ok'|'lost'|'disconnect'|'stale'='ok'){
   return{client,counts:()=>({sends,closeCount})};
 }
 function memoryJournal(){let claimed=false;const receipts:UploadReceipt[]=[];const journal:UploadJournal={get:async()=>structuredClone(plan),claim:async()=>{if(claimed)return false;claimed=true;return true;},record:async receipt=>{receipts.push(receipt);}};return{journal,receipts};}
+test('bootstrap readiness requires the pinned BSON status without any contract input',async()=>{
+  const m=mock();assert.deepEqual(await inspectBootstrap(plan.target,plan.contractId,keys,async()=>m.client),{bootstrapOnline:true,ledgerSeqNo:10,hpVersion:null,roundTime:null});
+  assert.deepEqual(m.counts(),{sends:0,closeCount:1});
+});
 test('bootstrap input uses exact BSON framing and requires a new committed upload result',async()=>{
   const m=mock(),{journal,receipts}=memoryJournal();let pinned:UploadTarget|undefined,contractId:string|undefined;
   const uploader=new BootstrapUploader(journal,async(target,_keys,id)=>{pinned=target;contractId=id;return m.client;},()=>now,100);

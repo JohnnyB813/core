@@ -8,7 +8,7 @@ export type UploadTarget={id:string;url:string;serverKey:string;lease:string;ima
 export type UploadPlan={kind:'controller-bundle';operationId:string;contractId:string;target:UploadTarget;ownerPublicKey:string;bundleHash:string;createdAt:number;expiresAt:number};
 export type UploadReceipt={operationId:string;state:'uncertain'|'applied';at:number;ledger?:number};
 export interface UploadJournal{get:(id:string)=>Promise<UploadPlan>;claim:(id:string)=>Promise<boolean>;record:(receipt:UploadReceipt)=>Promise<void>;}
-type BootstrapClient=HpClient&{getStatus:()=>Promise<{ledgerSeqNo?:number}>};
+type BootstrapClient=HpClient&{getStatus:()=>Promise<{ledgerSeqNo?:number;hpVersion?:string;roundTime?:number}>};
 type Factory=(target:UploadTarget,keys:HpKeys,contractId:string)=>Promise<BootstrapClient>;
 export function uploadTarget(value:UploadTarget):UploadTarget{
   const url=new URL(value.url);
@@ -28,7 +28,21 @@ function decode(value:unknown):{type:string;status:string;message:string}{
 async function deadline<T>(operation:Promise<T>,timeoutMs:number):Promise<T>{let timer:NodeJS.Timeout|undefined;try{return await Promise.race([operation,new Promise<T>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Bootstrap deadline exceeded')),timeoutMs);})]);}finally{clearTimeout(timer);}}
 async function factory(target:UploadTarget,keys:HpKeys,contractId:string):Promise<BootstrapClient>{
   const hp=loadHotPocket();
+  hp.setLogLevel(1);
   return await hp.createClient([target.url],keys,{protocol:'bson',contractId,trustedServerKeys:[target.serverKey],requiredConnectionCount:1,connectionTimeoutMs:3000}) as BootstrapClient;
+}
+export async function inspectBootstrap(raw:UploadTarget,contractId:string,keys:HpKeys,create:Factory=factory){
+  const target=uploadTarget(raw);if(!/^[a-f0-9-]{36}$/.test(contractId))throw new Error('Invalid bootstrap contract identity');
+  let client:BootstrapClient|undefined,invalid=false,closing=false,connections=0;
+  try{
+    client=await create(target,keys,contractId);
+    client.on('connection_change',(server,change)=>{if(closing)return;if(server!==target.url||change==='remove'||change==='add'&&++connections>1){invalid=true;closing=true;void client?.close().catch(()=>{});}});
+    if(!await deadline(client.connect(),5000)||invalid)throw new Error('Pinned bootstrap unavailable');
+    const status=decode(await deadline(client.submitContractReadRequest(serialize({type:'status'}),'bootstrap-status',3000),5000));
+    const node=await deadline(client.getStatus(),3000);
+    if(invalid||status.type!=='statusResult'||status.status!=='ok'||status.message!=='Bootstrap contract is online'||!Number.isSafeInteger(node.ledgerSeqNo))throw new Error('Pinned bootstrap status is invalid');
+    return{bootstrapOnline:true,ledgerSeqNo:node.ledgerSeqNo,hpVersion:typeof node.hpVersion==='string'?node.hpVersion.slice(0,40):null,roundTime:Number.isSafeInteger(node.roundTime)?node.roundTime:null};
+  }finally{closing=true;if(client)await deadline(client.close().catch(()=>{}),500).catch(()=>{});}
 }
 /** One owner-signed bootstrap upload. A lost result is never retried here. */
 export class BootstrapUploader{
@@ -40,7 +54,7 @@ export class BootstrapUploader{
     let client:BootstrapClient|undefined,invalid=false,closing=false,connections=0,claimed=false;
     try{
       client=await this.#factory(plan.target,keys,plan.contractId);
-      client.on('connection_change',(server,change)=>{if(closing)return;if(server!==plan.target.url||change==='remove'||change==='add'&&++connections>1){invalid=true;closing=true;void client?.close();}});
+      client.on('connection_change',(server,change)=>{if(closing)return;if(server!==plan.target.url||change==='remove'||change==='add'&&++connections>1){invalid=true;closing=true;void client?.close().catch(()=>{});}});
       if(!await deadline(client.connect(),this.#timeout)||invalid)throw new Error('Pinned bootstrap connection unavailable');
       const status=decode(await deadline(client.submitContractReadRequest(serialize({type:'status'}),'bootstrap-status',3000),this.#timeout));
       if(invalid||status.type!=='statusResult'||status.status!=='ok'||status.message!=='Bootstrap contract is online')throw new Error('Pinned bootstrap contract is not ready');
