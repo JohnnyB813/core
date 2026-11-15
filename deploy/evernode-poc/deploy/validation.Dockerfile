@@ -12,7 +12,7 @@ COPY runtime ./runtime
 COPY tests ./tests
 COPY tsconfig.json ./
 COPY deploy/patch-hotpocket.cjs deploy/pilot-identity.json deploy/fault-operator.json ./deploy/
-COPY deploy/evrpanel.ts deploy/restart-journal.ts ./deploy/
+COPY deploy/evrpanel.ts deploy/restart-journal.ts deploy/controller-bundle.ts deploy/bootstrap-client.ts deploy/upload-journal.ts deploy/controller-owner.json ./deploy/
 RUN node deploy/patch-hotpocket.cjs
 RUN --network=none npm run check
 RUN --network=none npm test
