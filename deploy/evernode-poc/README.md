@@ -14,10 +14,11 @@ The application runtime has no homelab or operator-PC dependency. Local builds, 
 - Gateways require four matching replies from five pinned controllers. Local failure can revoke a worker immediately. Quorum loss blocks new admissions; cached serving expires after five minutes. Quorum freshness is exposed for the future lease executor.
 - The official HotPocket client is locked at 0.5.7. Its project-local Node transport patch enables certificate verification and limits WebSocket frames to 256 KiB. Source hashes are checked before patching and before connecting. A new, singly pinned client is used for every poll; any disconnect invalidates that poll, preventing automatic UNL trust refresh from broadening a controller identity.
 - A two-URL client fails over once for allowed idempotent reads.
+- A separate health reporter probes the fixed three-worker set and submits authenticated inputs through a fresh pinned controller connection. Its persistent sequence survives clock rollback, its input and acknowledgment have deadlines, and reconnects cannot broaden a pin. It requires an explicit secret file, retained sequence file, and a current four-controller registry quorum before reporting.
 
 ## Current limits
 
-The five-controller Evernode cluster, three-worker fleet, health-report senders, worker fault endpoint, lease executor, and DNS failover are not deployed by this release. The reporter identities are prepared, but their private keys remain in the operator's protected local store until a named deployment authorizes their installation. Wallet seeds are not an input to this software.
+The five-controller Evernode cluster, three-worker fleet, health-report senders, worker fault endpoint, lease executor, and DNS failover are not deployed by this release. Reporter code is locally tested but is not included in the published compatibility gateway's process. The reporter identities are prepared, but their private keys remain in the operator's protected local store until a named deployment authorizes their installation. Wallet seeds are not an input to this software.
 
 The controller logic and SDK adapter are tested locally. Live HotPocket consensus, controller peering, secret installation, and SDK acquisition still need compatibility evidence. No live acquisition or renewal is initiated by the preflight tools.
 

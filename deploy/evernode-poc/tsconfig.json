@@ -10,5 +10,5 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["shared/**/*.ts", "gateway/**/*.ts", "controller/**/*.ts", "client/**/*.ts", "deploy/**/*.ts", "tests/**/*.ts"]
+  "include": ["shared/**/*.ts", "gateway/**/*.ts", "controller/**/*.ts", "client/**/*.ts", "reporter/**/*.ts", "deploy/**/*.ts", "tests/**/*.ts"]
 }

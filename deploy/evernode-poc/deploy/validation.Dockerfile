@@ -6,6 +6,7 @@ COPY shared ./shared
 COPY controller ./controller
 COPY gateway ./gateway
 COPY client ./client
+COPY reporter ./reporter
 COPY tests ./tests
 COPY tsconfig.json ./
 COPY deploy/patch-hotpocket.cjs deploy/pilot-identity.json ./deploy/
