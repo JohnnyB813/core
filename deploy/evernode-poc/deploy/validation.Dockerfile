@@ -13,7 +13,7 @@ COPY tests ./tests
 COPY tsconfig.json ./
 COPY deploy/patch-hotpocket.cjs deploy/pilot-identity.json deploy/fault-operator.json ./deploy/
 COPY deploy/evrpanel.ts deploy/restart-journal.ts deploy/controller-bundle.ts deploy/bootstrap-client.ts deploy/upload-journal.ts deploy/controller-owner.json ./deploy/
-COPY deploy/canary-policy.ts deploy/canary-executor.ts deploy/canary-journal.ts deploy/operation-poller.ts deploy/discover-controller.ts deploy/retirement.ts ./deploy/
+COPY deploy/canary-policy.ts deploy/canary-executor.ts deploy/canary-journal.ts deploy/operation-poller.ts deploy/discover-controller.ts deploy/retirement.ts deploy/canary-ledger.ts deploy/canary-host.ts deploy/canary-rpc.ts deploy/canary-presigned.ts ./deploy/
 RUN node deploy/patch-hotpocket.cjs
 RUN --network=none npm run check
 RUN --network=none npm test

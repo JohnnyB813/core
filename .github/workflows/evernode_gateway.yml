@@ -47,6 +47,8 @@ jobs:
         run: |
           docker build --platform=linux/amd64 -f deploy/evernode-poc/tests/runtime.Dockerfile -t warthog-poc-runtime-tests:trial deploy/evernode-poc
           docker run --rm --network=none --read-only --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=512m --cpus=1 --tmpfs=/run/poc:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/warthog/.warthog:rw,noexec,nosuid,size=32m,mode=0700 --tmpfs=/pilotdata:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/tmp:rw,noexec,nosuid,size=8m,mode=1777 warthog-poc-runtime-tests:trial
+      - name: Test the offsite experiment service with an independent fresh volume
+        run: docker run --rm --network=none --read-only --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=512m --cpus=1 --tmpfs=/run/poc:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/warthog/.warthog:rw,noexec,nosuid,size=32m,mode=0700 --tmpfs=/pilotdata:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/tmp:rw,noexec,nosuid,size=8m,mode=1777 --entrypoint=node warthog-poc-runtime-tests:trial --test tests/finite-gateway-process.test.ts
       - name: Build the controller wrapper and verify the actual Node 20 syntax
         run: |
           docker build --platform=linux/amd64 -f deploy/evernode-poc/runtime/controller.Dockerfile -t warthog-poc-controller:trial deploy/evernode-poc

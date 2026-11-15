@@ -6,7 +6,8 @@ import {readFile} from 'node:fs/promises';
 import {request as httpsRequest} from 'node:https';
 import {request as httpRequest} from 'node:http';
 import {once} from 'node:events';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
 import {signControl} from '../fault/protocol.ts';
 import {signSetup} from '../fault/setup.ts';
@@ -15,6 +16,8 @@ import type {ConfigUpdate} from '../fault/config-update.ts';
 import {parseConfig} from '../gateway/config.ts';
 import type {ControlRequest} from '../fault/protocol.ts';
 import type {SetupRequest} from '../fault/setup.ts';
+import {signFinite} from '../fault/finite-install.ts';
+import {parseCanaryCapability} from '../runtime/canary.ts';
 
 type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;configuration:{revision:number|null;configHash:string|null};resources:{memoryLimitBytes:number|null;volumeId:string|null;starts:number|null;quotaBytesVerified:boolean}}};
 const fixture=JSON.parse(await readFile('tests/runtime-secrets.json','utf8')) as {contractId:string;operator:string;reporters:Record<string,string>};
@@ -53,6 +56,14 @@ async function install(role:string,port:number,status:Status){
 async function pause(role:string,port:number,status:Status){
   const command:ControlRequest={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),action:'pause',issuedAt:Date.now(),durationMs:600};
   assert.equal((await request(port,'/pilot/control',command,signControl(command,fixture.operator))).status,200);
+}
+async function installClosedCanary(port:number,status:Status){
+  const require=createRequire(import.meta.url),pairs=require('ripple-keypairs'),codec=require('xrpl-binary-codec-prerelease'),key=pairs.deriveKeypair(pairs.generateSeed()),host=pairs.deriveKeypair(pairs.generateSeed()),now=Date.now();
+  const policy={version:1,contractId:fixture.contractId,operationId:randomUUID(),executorId:'g1',workerId:'w3',networkId:21337,canaryAccount:pairs.deriveAddress(key.publicKey),hostAccount:pairs.deriveAddress(host.publicKey),lease:'A'.repeat(64),rentEVR:'0.001',moments:1,maximumFeeDrops:1000,baselineExpiry:Math.floor(now/1000)+3600,notBefore:now,expiresAt:now+60000},tx={TransactionType:'Payment',Account:policy.canaryAccount,Destination:policy.hostAccount,NetworkID:21337,Amount:{currency:'EVR',issuer:'rEvernodee8dJLaFsujS6q1EiXvZYmHXr8',value:'0.001'},Fee:'120',Sequence:3,LastLedgerSequence:1020,Memos:[],SigningPubKey:key.publicKey,HookParameters:[{HookParameter:{HookParameterName:'4556520100000000000000000000000000000000000000000000000000000002',HookParameterValue:Buffer.from('evnExtendLease').toString('hex').toUpperCase()}},{HookParameter:{HookParameterName:'4556520100000000000000000000000000000000000000000000000000000003',HookParameterValue:policy.lease}}]},blob=codec.encode({...tx,TxnSignature:pairs.sign(codec.encodeForSigning(tx),key.privateKey)}),payload=parseCanaryCapability({policy,claimId:randomUUID(),payment:{blob,hash:createHash('sha512').update(Buffer.from('54584E00','hex')).update(Buffer.from(blob,'hex')).digest('hex').slice(0,64).toUpperCase()},host:{origin:'https://worker.example',userPort:30123,controlOrigin:'https://worker.example:30135',generation:randomUUID(),volumeId:randomUUID(),imageDigest:'sha256:'+'a'.repeat(64)}}),command={version:1 as const,contractId:fixture.contractId,targetId:'g1' as const,generation:status.generation,operationId:randomUUID(),issuedAt:now,payload};
+  assert.equal((await request(port,'/pilot/canary',command,'a'.repeat(88))).status,403);
+  const result=await request(port,'/pilot/canary',command,signFinite('canary-payment',command,parseCanaryCapability,fixture.operator));assert.equal(result.status,200);assert.doesNotMatch(JSON.stringify(result.body),new RegExp(blob));
+  await until(()=>request(port,'/pilot/canary'),r=>r.status===200&&(r.body as {progress?:{state:string;dispatchClaimed:boolean}}).progress?.state==='waiting-for-quorum');
+  const installed=await request(port,'/pilot/canary');assert.doesNotMatch(JSON.stringify(installed.body),new RegExp(blob));assert.equal((installed.body as {progress:{dispatchClaimed:boolean}}).progress.dispatchClaimed,false);
 }
 async function replaceConfiguration(role:string,port:number,status:Status){
   const before=(await request(port,'/pilot/configuration')).body as {revision:number;configHash:string};
@@ -96,6 +107,9 @@ test('gateway runtime reloads only verified setup and pauses its whole proxy pro
     assert.equal((await request(8443,'/pilot/control')).status,403);
     await install('g1',9445,status);
     await until(async()=>((await request(9445,'/pilot/status')).body as Status),value=>value.observations.applicationRunning&&value.observations.reporterRunning);
+    assert.equal((await request(9445,'/pilot/dashboard')).status,404);
+    await installClosedCanary(9445,status);
+    assert.equal((await request(8443,'/pilot/canary')).status,403);
     await until(()=>request(8443,'/chain/head'),value=>value.status===503);
     assert.equal((await request(8443,'/settings')).status,403);
     assert.equal((await request(8443,'/pilot/configuration')).status,403);

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts tests/host-api.test.ts tests/fault.test.ts tests/setup.test.ts tests/acquire.test.ts tests/worker-api.test.ts tests/controller-bundle.test.ts tests/bootstrap.test.ts tests/operations.test.ts tests/egress.test.ts tests/maintenance.test.ts tests/canary.test.ts tests/operation-poller.test.ts tests/discover-controller.test.ts tests/config-update.test.ts tests/retirement.test.ts",
+    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts tests/host-api.test.ts tests/fault.test.ts tests/setup.test.ts tests/acquire.test.ts tests/worker-api.test.ts tests/controller-bundle.test.ts tests/bootstrap.test.ts tests/operations.test.ts tests/egress.test.ts tests/maintenance.test.ts tests/canary.test.ts tests/operation-poller.test.ts tests/discover-controller.test.ts tests/config-update.test.ts tests/retirement.test.ts tests/canary-ledger.test.ts tests/canary-rpc.test.ts tests/canary-presigned.test.ts tests/finite-install.test.ts tests/canary-runtime.test.ts tests/experiment.test.ts",
     "prepare-client": "node deploy/patch-hotpocket.cjs",
     "build:controller": "esbuild controller/entry.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist/controller/contract.cjs",
     "preflight": "node deploy/preflight.ts"
@@ -19,11 +19,11 @@
     "esbuild": "0.25.11",
     "evernode-js-client": "0.6.61",
     "hotpocket-nodejs-contract": "0.7.4",
-    "ripple-keypairs": "1.1.0",
-    "typescript": "5.9.3",
-    "xrpl-binary-codec-prerelease": "7.0.1"
+    "typescript": "5.9.3"
   },
   "dependencies": {
-    "hotpocket-js-client": "0.5.7"
+    "hotpocket-js-client": "0.5.7",
+    "ripple-keypairs": "1.1.0",
+    "xrpl-binary-codec-prerelease": "7.0.1"
   }
 }

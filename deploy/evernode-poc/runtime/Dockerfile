@@ -7,12 +7,13 @@ COPY deploy/patch-hotpocket.cjs ./deploy/patch-hotpocket.cjs
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && node deploy/patch-hotpocket.cjs
 COPY --from=native /wart-node-linux /wart-node-linux
 COPY shared ./shared
-COPY controller/registry.ts ./controller/registry.ts
+COPY controller/registry.ts controller/operations.ts controller/maintenance.ts ./controller/
 COPY gateway ./gateway
 COPY reporter ./reporter
 COPY fault ./fault
 COPY runtime/*.ts ./runtime/
 COPY deploy/pilot-identity.json deploy/fault-operator.json ./deploy/
+COPY deploy/canary-policy.ts deploy/canary-executor.ts deploy/canary-journal.ts deploy/canary-host.ts deploy/canary-rpc.ts deploy/canary-presigned.ts deploy/operation-poller.ts ./deploy/
 COPY worker/entrypoint.sh ./worker/entrypoint.sh
 RUN chmod 0555 /app/worker/entrypoint.sh && mkdir -p /run/poc /warthog/.warthog /pilotdata
 ARG PILOT_RUNTIME=worker

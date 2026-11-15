@@ -3,12 +3,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY shared ./shared
-COPY controller/registry.ts ./controller/registry.ts
+COPY controller/registry.ts controller/operations.ts controller/maintenance.ts ./controller/
 COPY gateway ./gateway
 COPY reporter ./reporter
 COPY fault ./fault
 COPY runtime ./runtime
 COPY deploy/pilot-identity.json deploy/fault-operator.json ./deploy/
+COPY deploy/canary-policy.ts deploy/canary-executor.ts deploy/canary-journal.ts deploy/canary-host.ts deploy/canary-rpc.ts deploy/canary-presigned.ts deploy/operation-poller.ts ./deploy/
 RUN ./node_modules/.bin/esbuild runtime/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=/bundle/supervisor.mjs
 FROM evernode/sashimono@sha256:f65983ccbe6c99886b0c2b121e5891ebdddc549fb591d674bcdb4868940c7672
 WORKDIR /app

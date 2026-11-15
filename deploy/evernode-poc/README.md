@@ -1,6 +1,6 @@
 # Warthog on Evernode: compatibility milestone
 
-This standalone project contains the first implementation of the proposed Evernode API pool. The current release is a **compatibility gateway**, not a deployed redundant pool. Its default configuration has no workers or controller pins and returns 503 for Warthog reads. It can verify a host's HTTPS routing without admitting an unsynchronized worker.
+This standalone project contains the Evernode API pool proof of concept. Its **compatibility gateway** and separately configured pilot runtimes require live acceptance testing before the redundant pool can be considered validated. Its default configuration has no workers or controller pins and returns 503 for Warthog reads. It can verify a host's HTTPS routing without admitting an unsynchronized worker.
 
 The application runtime has no homelab or operator-PC dependency. Local builds, private operator setup, and live preflight observations are separate from the rented runtime.
 
@@ -22,16 +22,16 @@ The application runtime has no homelab or operator-PC dependency. Local builds, 
 - The separate pilot runtime images package authenticated TLS setup, role-specific reporter keys, persistent sequence state, and signed pause/resume controls for their own application process groups. Private setup is atomic and refuses mismatched identities or replacement keys. Pauses automatically expire, and replayed operations cannot extend them. Non-root isolated fixtures verify real Warthog persistence, mapped P2P settings, reporter startup, gateway reload, proxy pause and restoration.
 
 - Controller deployment uses a deterministic, independently checked ZIP archive and exact BSON bootstrap requests. A pinned owner, contract, image, lease, bundle hash and permanent disk claim bind a one-shot upload; a lost acknowledgment is reconciled instead of replayed.
-- The contract retains a separate operation history bound to the unchanged health snapshot hash. The configured owner can authorize one canary policy; only the configured executor can claim and report it. One worker may be excluded for replacement through a fresh, monotonic owner instruction, and readmission requires new report windows. This does not implement the ledger executor itself.
+- The contract retains a separate operation history bound to the unchanged health snapshot hash. The configured owner can authorize one canary policy; only the configured executor can claim and report it. One worker may be excluded for replacement through a fresh, monotonic owner instruction, and readmission requires new report windows. The bounded ledger executor runs separately on G1.
 - Future runtimes make a bounded, cached IPv4 egress observation through a fixed HTTPS IP echo service. It runs outside health, consensus and request serving, with at most three startup attempts.
 
 ## Current limits
 
-The five-controller Evernode cluster, three-worker fleet, health-report senders, worker fault endpoint, lease executor, and DNS failover are not deployed by this release. The compatibility gateway does not run reporters; the separate pilot runtime packages them and waits for authenticated setup. Reporter private keys remain in the operator's protected local store until installed on a named pilot runtime. The lease executor, dashboard and offsite load driver remain unfinished. Wallet seeds are not an input to the current runtime.
+Full redundant-fleet acceptance and client failover require separate live deployment evidence. The compatibility gateway does not run reporters; the separate pilot runtime packages them and waits for authenticated setup. Reporter private keys remain in the operator's protected local store until installed on a named pilot runtime. The finite canary executor, dashboard and offsite load driver require approved installation and live validation. Wallet seeds are not an input to the current runtime.
 
-The pilot worker uses the tested native port-advertisement patch from draft PR #3. Its optional `node.advertise-port` setting preserves the existing handshake format and default behavior, while allowing the public port to differ from the container listener. Native mainnet/testnet handshakes passed in isolated tests; live inbound and outbound Evernode peering remains unverified. The controller wrapper builds and parses on the official image's Node 20, but that does not prove live HotPocket/FUSE operation or controller consensus.
+The pilot worker uses the tested native port-advertisement patch from draft PR #3. Its optional `node.advertise-port` setting preserves the existing handshake format and default behavior, while allowing the public port to differ from the container listener. Native mainnet/testnet handshakes passed in isolated tests; each deployment must verify inbound peering and its allocated advertised port. The controller wrapper builds and parses on the official image's Node 20, but that does not prove live HotPocket/FUSE operation or controller consensus.
 
-The controller logic and SDK adapter are tested locally. Live HotPocket consensus, controller peering, fleet secret installation, and the canary signing adapter still need compatibility evidence. Seedless user-signed acquisition and extension have validated ledger responses and matching host readback. No live acquisition or renewal is initiated by the preflight tools. The seedless acquisition requirement builder uses Sashimono’s exact `owner_pubkey`, `contract_id`, `image`, and `config` schema; its output is checked before a user signs a live acquisition.
+The controller logic and SDK adapter are tested locally. Live HotPocket consensus, controller peering, fleet secret installation, and the canary dispatch adapter require live compatibility evidence. Seedless user-signed acquisition and extension have validated ledger responses and matching host readback. No live acquisition or renewal is initiated by the preflight tools. The seedless acquisition requirement builder uses Sashimono’s exact `owner_pubkey`, `contract_id`, `image`, and `config` schema; its output is checked before a user signs a live acquisition.
 
 The direct TLS listener passed a one-hour rented-host compatibility check: normal CA and hostname validation succeeded, HTTP/1.1 and HTTP/2 returned the expected 200/503/403/400 responses, and startup logs confirmed UID 1000. The running image digest matched the tested release. This check used an empty worker set and no controller quorum; it does not prove a deployed API pool. Certificate loading happens at startup; automatic certificate reload is not implemented. Clients must independently verify the CA chain and hostname.
 
@@ -120,6 +120,37 @@ sockets when a peer stalls. Isolated TLS fixtures exercise stalled HTTP upgrades
 and stalled native handshakes, including actual socket cleanup. The compiled
 contract fixture uses native SDK file descriptors under Node 20 and checks
 persistent consensus state and unchanged state during read-only queries.
+
+## Finite offsite validation services
+
+The gateway runtime has two separate optional pilot services. G1 accepts one
+root-signed canary capability containing one locally signed renewal payment,
+its fixed lease and host binding, and its bounded policy. No wallet signing key
+is accepted. The service requires a committed claim and fresh paired four-of-five
+controller reads before its permanent dispatch claim. After dispatch, a lost
+response or process restart only reconciles the saved transaction hash. This
+validates one bounded renewal; it does not provide ongoing automatic signing.
+
+G2 accepts one immutable root-signed experiment plan. It fixes ten targets with
+distinct declared public IPs, controller pins, HTTPS endpoints and generations.
+Every fault action also has its own short-lived operator signature. Late actions
+are skipped, and a durable claim prevents replay after an uncertain response.
+Pauses expire within eight minutes. The finite driver and its TLS status listener
+run outside the gateway application's process group.
+
+The driver measures 9,000 checkpoint-hash reads over fifteen minutes, with at most
+two gateway attempts per request and a 32-request concurrency cap. Failed and
+missed slots count against the success rate. Its health reads run separately from
+the load schedule. A six-hour steady window requires all five controllers, all
+three admitted workers, valid target identities and working application processes.
+The planned hour without the operator PC is recorded separately; the driver
+cannot itself certify that a person physically disconnected that PC or homelab.
+
+`/pilot/dashboard`, `/pilot/experiment` and the bounded JSONL evidence download
+are available on G2's direct TLS control origin. Status replies omit installation
+payloads, signed capabilities and private keys. G1 exposes only safe canary status
+on `/pilot/canary`. The public Warthog gateway continues to exclude these paths.
+These services still require live installation and full acceptance evidence.
 
 ## Primary interface references
 
