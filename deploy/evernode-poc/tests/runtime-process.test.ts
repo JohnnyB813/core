@@ -13,7 +13,7 @@ import {signSetup} from '../fault/setup.ts';
 import type {ControlRequest} from '../fault/protocol.ts';
 import type {SetupRequest} from '../fault/setup.ts';
 
-type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;resources:{memoryLimitBytes:number|null}}};
+type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;resources:{memoryLimitBytes:number|null;volumeId:string|null;starts:number|null;quotaBytesVerified:boolean}}};
 const fixture=JSON.parse(await readFile('tests/runtime-secrets.json','utf8')) as {contractId:string;operator:string;reporters:Record<string,string>};
 const ca=await readFile('/contract/cfg/tlscert.pem');
 const configuration={contractId:fixture.contractId,controllers:['c1','c2','c3','c4','c5'],controllerEndpoints:[1,2,3,4,5].map(i=>({id:'c'+i,url:'wss://127.0.0.1:'+(9800+i)+'/',serverKey:'ed'+String(i).repeat(64)})),backends:[1,2,3].map(i=>({id:'w'+i,url:'http://127.0.0.1:'+(3000+i)})),reference:'https://reference.example',policy:{checkpoint:{height:5000000,hash:'a'.repeat(64)},minimumHeight:5000000,maxLag:3,minPeers:2,maxLatencyMs:3000,freshnessMs:30000}};
@@ -58,16 +58,20 @@ test('worker runtime uses mapped ports, persists data across restart and starts 
     const status=await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.applicationRunning);
     assert.equal(status.observations.role,'w1');assert.ok(status.observations.resources.memoryLimitBytes);
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
+    const tlsHead=await request(9444,'/chain/head');assert.equal(tlsHead.status,200);assert.equal((tlsHead.body as {code:number}).code,0);
+    assert.equal((await request(9444,'/settings')).status,404);
     await install('w1',9444,status);
     await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.reporterRunning);
     assert.match(current.logs(),/P2P endpoint is 0\.0\.0\.0:9186\./);assert.match(current.logs(),/P2P advertised port is 30212\./);assert.match(current.logs(),/RPC endpoint is 127\.0\.0\.1:3000\./);
     const marker=(await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim();
+    const beforeStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(beforeStatus.observations.resources.volumeId,marker);assert.equal(beforeStatus.observations.resources.starts,1);assert.equal(beforeStatus.observations.resources.quotaBytesVerified,false);
     await pause('w1',9444,status);await assert.rejects(request(3001,'/chain/head',undefined,undefined,150,false));
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
     await stop(current.child);current=launch('worker');
     await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.applicationRunning&&value.observations.reporterRunning);
     await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
     assert.equal((await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim(),marker);assert.match(current.logs(),/restored=1 starts=2/);assert.match(current.logs(),/mode=network/);
+    const afterStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(afterStatus.observations.resources.volumeId,marker);assert.equal(afterStatus.observations.resources.starts,2);
   }catch(error){console.error(current.logs().split('\n').filter(line=>!/private.?key|secret|password|ed[0-9a-f]{128}/i.test(line)).join('\n'));throw error;}
 });
 test('gateway runtime reloads only verified setup and pauses its whole proxy process group',{timeout:45000},async t=>{

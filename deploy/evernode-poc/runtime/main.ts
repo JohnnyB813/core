@@ -7,6 +7,7 @@ import {SetupInstaller} from '../fault/setup.ts';
 import {startControlServer} from '../fault/server.ts';
 import {ManagedProcess} from './process.ts';
 import {resources} from './resources.ts';
+import {workerApi} from './worker-api.ts';
 import identity from '../deploy/pilot-identity.json' with {type:'json'};
 import operator from '../deploy/fault-operator.json' with {type:'json'};
 
@@ -35,7 +36,8 @@ const reporterIdentity=identity.reporters.find(item=>item.id===role);
 if(mode!=='controller'&&!reporterIdentity)throw new Error('The runtime reporter identity is missing');
 const installer=reporterIdentity?new SetupInstaller({contractId:identity.contractId,targetId:role,generation:()=>controller.status().generation,operatorPublicKey:operator.operatorPublicKey,reporterPublicKey:reporterIdentity.publicKey,directory:stateDirectory+'/setup'}):undefined;
 const imageDigest=process.env.IMAGE_DIGEST?.replace(/^@/,'');
-const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,resources:await resources(dataDirectory)}));
+const readAdapter=mode==='worker'?workerApi(allocatedPort('INTERNAL_USER_PORT')):undefined;
+const control=await startControlServer(controller,controlPort,tls.pemFiles[0],installer,async()=>({role,mode,applicationRunning:application?.running===true,reporterRunning:reporter?.running===true,imageDigest:imageDigest&&/^sha256:[a-f0-9]{64}$/.test(imageDigest)?imageDigest:null,tlsExpiresAt:tls.expiresAt,resources:await resources(dataDirectory)}),readAdapter);
 async function startApplication(configured:boolean):Promise<ManagedProcess>{
   const environment={...process.env};
   let created:ManagedProcess;
