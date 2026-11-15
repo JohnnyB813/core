@@ -8,6 +8,6 @@ COPY shared ./shared
 COPY controller/registry.ts ./controller/registry.ts
 COPY gateway/*.ts gateway/*.json ./gateway/
 RUN mkdir -p /run/poc && chown node:node /run/poc
-USER node
-EXPOSE 8080
-CMD ["node", "gateway/main.ts"]
+USER root
+EXPOSE 8080 8443
+CMD ["node", "gateway/bootstrap.ts"]

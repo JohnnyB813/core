@@ -38,7 +38,7 @@ export class GatewayAgent {
     const fresh=Boolean(observation&&now>=observation.observedAt&&now-observation.observedAt<=this.config.policy.freshnessMs);
     return this.registry.mayRoute(id,Boolean(fresh&&sample?.assessment.healthy&&this.states.get(id)?.eligible),now);
   }
-  status(now=Date.now()):unknown{return{
+  status(now=Date.now()):Record<string,unknown>{return{
     phase:'compatibility',
     controllerTransport:this.controllerTransport,
     controllerQuorum:this.registry.quorumFresh(now),

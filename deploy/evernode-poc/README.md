@@ -14,6 +14,7 @@ The application runtime has no homelab or operator-PC dependency. Local builds, 
 - Gateways require four matching replies from five pinned controllers. Local failure can revoke a worker immediately. Quorum loss blocks new admissions; cached serving expires after five minutes. Quorum freshness is exposed for the future lease executor.
 - The official HotPocket client is locked at 0.5.7. Its project-local Node transport patch enables certificate verification and limits WebSocket frames to 256 KiB. Source hashes are checked before patching and before connecting. A new, singly pinned client is used for every poll; any disconnect invalidates that poll, preventing automatic UNL trust refresh from broadening a controller identity.
 - A two-URL client fails over once for allowed idempotent reads.
+- The gateway can terminate TLS itself on port 8443 using the platform's certificate files. It reads those files during bootstrap, stages mode-0600 runtime copies, and drops to UID 1000 before starting the agent and HAProxy. Both HTTP/1.1 and HTTP/2 retain the closed-worker 503 response. Missing, expired, or mismatched certificate profiles do not enable this listener.
 - A separate health reporter probes the fixed three-worker set and submits authenticated inputs through a fresh pinned controller connection. Its persistent sequence survives clock rollback, its input and acknowledgment have deadlines, and reconnects cannot broaden a pin. It requires an explicit secret file, retained sequence file, and a current four-controller registry quorum before reporting.
 
 ## Current limits
@@ -21,6 +22,8 @@ The application runtime has no homelab or operator-PC dependency. Local builds, 
 The five-controller Evernode cluster, three-worker fleet, health-report senders, worker fault endpoint, lease executor, and DNS failover are not deployed by this release. Reporter code is locally tested but is not included in the published compatibility gateway's process. The reporter identities are prepared, but their private keys remain in the operator's protected local store until a named deployment authorizes their installation. Wallet seeds are not an input to this software.
 
 The controller logic and SDK adapter are tested locally. Live HotPocket consensus, controller peering, secret installation, and SDK acquisition still need compatibility evidence. No live acquisition or renewal is initiated by the preflight tools.
+
+The direct TLS listener is locally tested and still requires a rented-host certificate/port check. Certificate loading happens at startup; automatic certificate reload is not implemented. This is a short compatibility trial, not a long-lived certificate-rotation solution. Clients must independently verify the CA chain and hostname.
 
 ## Build and verification
 
@@ -40,6 +43,12 @@ docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges -
 
 The container fixtures test actual HAProxy load distribution, upstream failure, bounded retry, no healthy workers, loss of the health agent, method/path boundaries, response limits, rate limiting, and the default closed gateway. The TLS test uses a disposable certificate entirely inside the isolated test container. No host directory is mounted and no host port is published.
 
+The root bootstrap path is separately checked with only the file-ownership, file-access, and user-switch capabilities required by that fixture:
+
+```text
+docker run --rm --user=0:0 --network=none --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 warthog-poc-gateway-tests:compat node --test --test-concurrency=1 tests/platform-tls-container.test.ts
+```
+
 The production base image and Alpine packages are pinned. npm dependencies are locked. The controller bundle targets the standard Node 16 HotPocket bootstrap runtime; a live runtime compatibility check remains required. Record the final published container digest before renting.
 
 ## Compatibility deployment
@@ -53,6 +62,16 @@ IMAGE--contract--false--gptcp1--8080--proxyssl--false
 Check the entire image-and-switch string against the host's 128-character limit. Validate the selected host, price, actual tenant quota, unique public IP, lease expiry, and image digest. Prepare a one-hour user-signed rental only after the current worker's full-sync gate passes and the additional charge is approved.
 
 The host should route its HTTPS domain to HTTP port 8080 inside this container. Verify a valid certificate, GET `/status`, and a bounded 503 from `/chain/head`. Neither a 200 status page nor a running container proves worker readiness.
+
+One live host's HTTPS reverse proxy reset a no-worker 503 instead of forwarding it, while the direct HTTP port returned 503 correctly. The two-URL client handled that reset in a read-only reference-fallback test; that was not a multi-Evernode failover test.
+
+For a direct TLS compatibility rental, add a second general TCP mapping:
+
+```text
+IMAGE--contract--false--gptcp1--8080--gptcp2--8443--proxyssl--false
+```
+
+Use `https://HOST_DOMAIN:ASSIGNED_GPTCP2_PORT/status` and `/chain/head`. This connection terminates in the tenant gateway and avoids the host's application-level HTTPS proxy. The platform profiles are `/contract/cfg/tlscert.pem` plus `tlskey.pem`, and `/contract/tls/fullchain.pem` plus `privkey.pem`. Their originals are never modified. Profiles must have at least two hours of validity remaining; no self-signed trust exception or plaintext client fallback is added. A new trial still needs a concrete approved rental and the user's wallet signature.
 
 For later fleet configuration, provide a validated JSON file through `PILOT_CONFIG`. Configure exactly five distinct WSS controller origins with unique pinned server keys and exactly three worker origins. The default compatibility configuration never admits traffic. Never bypass certificate validation to make a host pass.
 

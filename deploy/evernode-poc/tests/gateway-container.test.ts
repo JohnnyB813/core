@@ -68,7 +68,7 @@ test('actual gateway process keeps admission closed without connected controller
 });
 test('published compatibility defaults start with no workers and closed admission',{timeout:5000},async t=>{
   const env={...process.env};delete env.PILOT_CONFIG;
-  const child=spawn(process.execPath,['gateway/main.ts'],{env,stdio:'ignore'});t.after(()=>stop(child));
+  const child=spawn(process.execPath,['gateway/bootstrap.ts'],{env,stdio:'ignore'});t.after(()=>stop(child));
   const status=await eventually(()=>fetch('http://127.0.0.1:8080/status').then(r=>r.json()) as Promise<{workers:unknown[];workerReady:boolean;controllerQuorum:boolean}>,value=>Array.isArray(value.workers));
   assert.equal(status.workers.length,0);assert.equal(status.workerReady,false);assert.equal(status.controllerQuorum,false);
   assert.equal((await fetch('http://127.0.0.1:8080/chain/head')).status,503);

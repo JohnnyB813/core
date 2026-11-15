@@ -20,7 +20,8 @@ export function parseConfig(value:unknown):GatewayConfig {
   if(Number(p.maxLag)>10||Number(p.minPeers)<2||Number(p.maxLatencyMs)>3000||Number(p.freshnessMs)>30000)throw new Error('Policy exceeds pilot bounds');
   return{contractId:c.contractId,controllers:c.controllers as string[],controllerEndpoints,backends,reference:endpoint(c.reference).origin,policy:{checkpoint:{height:checkpoint.height,hash:checkpoint.hash},minimumHeight:p.minimumHeight,maxLag:Number(p.maxLag),minPeers:Number(p.minPeers),maxLatencyMs:Number(p.maxLatencyMs),freshnessMs:Number(p.freshnessMs)}};
 }
-export function haproxyConfig(config:GatewayConfig):string {
+export function haproxyConfig(config:GatewayConfig,pemFiles:string[]=[]):string {
+  if(pemFiles.some(file=>!/^\/run\/poc\/(host|instance)-tls\.pem$/.test(file)))throw new Error('Unexpected TLS staging path');
   const servers=config.backends.map((backend,i)=>{
     const url=endpoint(backend.url);
     const tls=url.protocol==='https:'?' ssl verify required ca-file /etc/ssl/cert.pem sni str('+url.hostname+')':'';
@@ -42,6 +43,7 @@ defaults
   retries 1
 frontend public_readonly
   bind 0.0.0.0:8080
+${pemFiles.length?'  bind 0.0.0.0:8443 ssl '+pemFiles.map(file=>'crt '+file).join(' ')+' ssl-min-ver TLSv1.2 alpn h2,http/1.1':''}
   stick-table type ip size 10k expire 30s store http_req_rate(10s)
   http-request track-sc0 src
   http-request deny deny_status 429 if { sc_http_req_rate(0) gt 600 }
