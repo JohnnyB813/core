@@ -1,0 +1,58 @@
+name: Publish Evernode gateway compatibility image
+on:
+  push:
+    branches: [poc/gateway-compat]
+    paths:
+      - deploy/evernode-poc/**
+      - .github/workflows/evernode_gateway.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: evernode-gateway-compat-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  gateway-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out the exact compatibility commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Type check, test, and bundle the standalone project
+        run: docker build --platform=linux/amd64 -f deploy/evernode-poc/deploy/validation.Dockerfile -t warthog-poc-validation:ci deploy/evernode-poc
+      - name: Build the compatibility gateway
+        run: docker build --platform=linux/amd64 -f deploy/evernode-poc/gateway/Dockerfile -t warthog-poc-gateway:compat deploy/evernode-poc
+      - name: Build actual-process fixtures
+        run: docker build --platform=linux/amd64 -f deploy/evernode-poc/tests/Dockerfile -t warthog-poc-gateway-tests:compat deploy/evernode-poc
+      - name: Test routing, failures, closed admission, and TLS in isolation
+        run: docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 warthog-poc-gateway-tests:compat
+      - name: Log in to the existing public image package
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested gateway under a unique tag
+        shell: bash
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/warthog-node
+        run: |
+          set -euo pipefail
+          image="${IMAGE,,}"
+          tag="gw-${GITHUB_SHA:0:12}"
+          docker tag warthog-poc-gateway:compat "$image:$tag"
+          docker push "$image:$tag"
+          docker buildx imagetools inspect "$image:$tag"
+          {
+            echo '### Evernode gateway compatibility release'
+            printf '\n`%s:%s`\n' "$image" "$tag"
+            echo
+            echo 'Default admission is closed. This image does not initiate paid leases.'
+          } >> "$GITHUB_STEP_SUMMARY"

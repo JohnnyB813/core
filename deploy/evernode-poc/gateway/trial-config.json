@@ -1,0 +1,11 @@
+{
+  "contractId": "not-yet-deployed",
+  "controllers": ["unconfigured1", "unconfigured2", "unconfigured3", "unconfigured4", "unconfigured5"],
+  "controllerEndpoints": [],
+  "backends": [],
+  "reference": "https://warthognode.duckdns.org",
+  "policy": {
+    "checkpoint": {"height":5000000,"hash":"848a75bd1776562075c8c86dc2ddfe9eb1f62a1a53be9a31430fcdbaae675557"},
+    "minimumHeight":5000000,"maxLag":3,"minPeers":2,"maxLatencyMs":3000,"freshnessMs":30000
+  }
+}
