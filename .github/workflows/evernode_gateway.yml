@@ -35,6 +35,22 @@ jobs:
         run: docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 warthog-poc-gateway-tests:compat
       - name: Test root bootstrap dropping to the unprivileged TLS runtime
         run: docker run --rm --user=0:0 --network=none --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 warthog-poc-gateway-tests:compat node --test --test-concurrency=1 tests/platform-tls-container.test.ts
+      - name: Build authenticated setup and process-control fixtures
+        run: docker build --platform=linux/amd64 -f deploy/evernode-poc/tests/fault.Dockerfile -t warthog-poc-fault-tests:trial deploy/evernode-poc
+      - name: Test private setup and bounded process controls without host access
+        run: docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --memory=256m --cpus=1 --tmpfs=/run/poc:rw,noexec,nosuid,size=16m,mode=0700,uid=1000,gid=1000 --tmpfs=/tmp:rw,noexec,nosuid,size=8m,mode=1777 warthog-poc-fault-tests:trial
+      - name: Build the worker and gateway pilot runtimes
+        run: |
+          docker build --platform=linux/amd64 -f deploy/evernode-poc/runtime/Dockerfile -t warthog-poc-runtime:trial deploy/evernode-poc
+          docker build --platform=linux/amd64 --build-arg PILOT_RUNTIME=gateway -f deploy/evernode-poc/runtime/Dockerfile -t warthog-poc-gateway-runtime:trial deploy/evernode-poc
+      - name: Build and test complete runtime startup, setup, storage and process groups
+        run: |
+          docker build --platform=linux/amd64 -f deploy/evernode-poc/tests/runtime.Dockerfile -t warthog-poc-runtime-tests:trial deploy/evernode-poc
+          docker run --rm --network=none --read-only --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges --pids-limit=128 --memory=512m --cpus=1 --tmpfs=/run/poc:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/warthog/.warthog:rw,noexec,nosuid,size=32m,mode=0700 --tmpfs=/pilotdata:rw,noexec,nosuid,size=16m,mode=0700 --tmpfs=/tmp:rw,noexec,nosuid,size=8m,mode=1777 warthog-poc-runtime-tests:trial
+      - name: Build the controller wrapper and verify the actual Node 20 syntax
+        run: |
+          docker build --platform=linux/amd64 -f deploy/evernode-poc/runtime/controller.Dockerfile -t warthog-poc-controller:trial deploy/evernode-poc
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=64 --memory=128m --cpus=1 --entrypoint=node warthog-poc-controller:trial --check /app/supervisor.mjs
       - name: Log in to the existing public image package
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
@@ -52,6 +68,13 @@ jobs:
           docker tag warthog-poc-gateway:compat "$image:$tag"
           docker push "$image:$tag"
           docker buildx imagetools inspect "$image:$tag"
+          for pair in 'warthog-poc-runtime:trial pw' 'warthog-poc-gateway-runtime:trial pg' 'warthog-poc-controller:trial pc'; do
+            read -r source prefix <<< "$pair"
+            runtime_tag="$prefix-${GITHUB_SHA:0:12}"
+            docker tag "$source" "$image:$runtime_tag"
+            docker push "$image:$runtime_tag"
+            docker buildx imagetools inspect "$image:$runtime_tag"
+          done
           {
             echo '### Evernode gateway compatibility release'
             printf '\n`%s:%s`\n' "$image" "$tag"

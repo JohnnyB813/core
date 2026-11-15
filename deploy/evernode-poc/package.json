@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts",
+    "test": "node --test tests/health.test.ts tests/registry.test.ts tests/http.test.ts tests/client.test.ts tests/reducer.test.ts tests/contract.test.ts tests/controllers.test.ts tests/pool-probe.test.ts tests/reporter.test.ts tests/host-api.test.ts tests/fault.test.ts tests/setup.test.ts",
     "prepare-client": "node deploy/patch-hotpocket.cjs",
     "build:controller": "esbuild controller/entry.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist/controller/contract.cjs",
     "preflight": "node deploy/preflight.ts"
