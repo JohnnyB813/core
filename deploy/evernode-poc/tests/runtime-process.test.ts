@@ -1,0 +1,120 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn,spawnSync} from 'node:child_process';
+import type {ChildProcess} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
+import {request as httpsRequest} from 'node:https';
+import {request as httpRequest} from 'node:http';
+import {once} from 'node:events';
+import {randomUUID,createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {setTimeout as delay} from 'node:timers/promises';
+import {signControl} from '../fault/protocol.ts';
+import {signSetup} from '../fault/setup.ts';
+import {signConfigUpdate} from '../fault/config-update.ts';
+import type {ConfigUpdate} from '../fault/config-update.ts';
+import {parseConfig} from '../gateway/config.ts';
+import type {ControlRequest} from '../fault/protocol.ts';
+import type {SetupRequest} from '../fault/setup.ts';
+import {signFinite} from '../fault/finite-install.ts';
+import {parseCanaryCapability} from '../runtime/canary.ts';
+
+type Status={generation:string;paused:boolean;observations:{applicationRunning:boolean;reporterRunning:boolean;role:string;configuration:{revision:number|null;configHash:string|null};resources:{memoryLimitBytes:number|null;volumeId:string|null;starts:number|null;quotaBytesVerified:boolean}}};
+const fixture=JSON.parse(await readFile('tests/runtime-secrets.json','utf8')) as {contractId:string;operator:string;reporters:Record<string,string>};
+const ca=await readFile('/contract/cfg/tlscert.pem');
+const configuration={contractId:fixture.contractId,controllers:['c1','c2','c3','c4','c5'],controllerEndpoints:[1,2,3,4,5].map(i=>({id:'c'+i,url:'wss://127.0.0.1:'+(9800+i)+'/',serverKey:'ed'+String(i).repeat(64)})),backends:[1,2,3].map(i=>({id:'w'+i,url:'http://127.0.0.1:'+(3000+i)})),reference:'https://reference.example',policy:{checkpoint:{height:5000000,hash:'a'.repeat(64)},minimumHeight:5000000,maxLag:3,minPeers:2,maxLatencyMs:3000,freshnessMs:30000}};
+
+async function request(port:number,path:string,body?:unknown,signature?:string,timeout=2000,secure=true):Promise<{status:number;body:unknown}>{
+  return new Promise((resolve,reject)=>{
+    const encoded=body?JSON.stringify(body):undefined;
+    const req=(secure?httpsRequest:httpRequest)({hostname:'127.0.0.1',port,path,method:encoded?'POST':'GET',...(secure?{ca,rejectUnauthorized:true}:{}),agent:false,headers:{...(encoded?{'content-type':'application/json','content-length':Buffer.byteLength(encoded)}:{}),...(signature?{'x-pilot-signature':signature}:{})}},response=>{
+      const chunks:Buffer[]=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>{try{const text=Buffer.concat(chunks).toString('utf8');resolve({status:response.statusCode!,body:text.startsWith('{')?JSON.parse(text):text});}catch(error){reject(error);}});
+    });req.setTimeout(timeout,()=>req.destroy(new Error('Fixture request deadline')));req.on('error',reject);req.end(encoded);
+  });
+}
+async function until<T>(probe:()=>Promise<T>,accept:(value:T)=>boolean,timeout=15000):Promise<T>{
+  const end=Date.now()+timeout;while(Date.now()<end){try{const value=await probe();if(accept(value))return value;}catch{}await delay(50);}throw new Error('Runtime fixture condition timed out');
+}
+function launch(mode:'worker'|'gateway'):{child:ChildProcess;logs:()=>string}{
+  const child=spawn(process.execPath,['runtime/main.ts'],{env:{...process.env,PILOT_RUNTIME:mode,ROLE:mode==='worker'?'w1':'g1',INTERNAL_PEER_PORT:'9186',EXTERNAL_PEER_PORT:'30212',INTERNAL_USER_PORT:mode==='worker'?'3001':'9445',EXTERNAL_USER_PORT:mode==='worker'?'30222':'30322',INTERNAL_GPTCP1_PORT:'9444'},stdio:['ignore','pipe','pipe']});
+  let logs='';for(const stream of [child.stdout,child.stderr])stream?.on('data',chunk=>{logs+=chunk.toString();if(logs.length>65536)logs=logs.slice(-65536);});
+  return{child,logs:()=>logs};
+}
+async function stop(child:ChildProcess){
+  if(child.exitCode!==null||child.signalCode!==null)return;
+  const exited=once(child,'exit');
+  // The production supervisor drops to UID 1000. Signal it as that same user;
+  // the fixture deliberately has no CAP_KILL.
+  const result=spawnSync('/bin/kill',['-TERM',String(child.pid)],{uid:1000,gid:1000,stdio:'ignore'});
+  if(result.status!==0)child.kill('SIGTERM');
+  const outcome=await Promise.race([exited.then(()=>true),delay(12000,false,{ref:false})]);assert.equal(outcome,true,'Supervisor did not shut down cleanly');
+}
+async function install(role:string,port:number,status:Status){
+  const setup:SetupRequest={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),issuedAt:Date.now(),reporterKey:fixture.reporters[role],config:configuration};
+  const installed=await request(port,'/pilot/setup',setup,signSetup(setup,fixture.operator));assert.equal(installed.status,200);assert.equal(JSON.stringify(installed.body).includes(fixture.reporters[role]),false);
+}
+async function pause(role:string,port:number,status:Status){
+  const command:ControlRequest={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),action:'pause',issuedAt:Date.now(),durationMs:600};
+  assert.equal((await request(port,'/pilot/control',command,signControl(command,fixture.operator))).status,200);
+}
+async function installClosedCanary(port:number,status:Status){
+  const require=createRequire(import.meta.url),pairs=require('ripple-keypairs'),codec=require('xrpl-binary-codec-prerelease'),key=pairs.deriveKeypair(pairs.generateSeed()),host=pairs.deriveKeypair(pairs.generateSeed()),now=Date.now();
+  const policy={version:1,contractId:fixture.contractId,operationId:randomUUID(),executorId:'g1',workerId:'w3',networkId:21337,canaryAccount:pairs.deriveAddress(key.publicKey),hostAccount:pairs.deriveAddress(host.publicKey),lease:'A'.repeat(64),rentEVR:'0.001',moments:1,maximumFeeDrops:1000,baselineExpiry:Math.floor(now/1000)+3600,notBefore:now,expiresAt:now+60000},tx={TransactionType:'Payment',Account:policy.canaryAccount,Destination:policy.hostAccount,NetworkID:21337,Amount:{currency:'EVR',issuer:'rEvernodee8dJLaFsujS6q1EiXvZYmHXr8',value:'0.001'},Fee:'120',Sequence:3,LastLedgerSequence:1020,Memos:[],SigningPubKey:key.publicKey,HookParameters:[{HookParameter:{HookParameterName:'4556520100000000000000000000000000000000000000000000000000000002',HookParameterValue:Buffer.from('evnExtendLease').toString('hex').toUpperCase()}},{HookParameter:{HookParameterName:'4556520100000000000000000000000000000000000000000000000000000003',HookParameterValue:policy.lease}}]},blob=codec.encode({...tx,TxnSignature:pairs.sign(codec.encodeForSigning(tx),key.privateKey)}),payload=parseCanaryCapability({policy,claimId:randomUUID(),payment:{blob,hash:createHash('sha512').update(Buffer.from('54584E00','hex')).update(Buffer.from(blob,'hex')).digest('hex').slice(0,64).toUpperCase()},host:{origin:'https://worker.example',userPort:30123,controlOrigin:'https://worker.example:30135',generation:randomUUID(),volumeId:randomUUID(),imageDigest:'sha256:'+'a'.repeat(64)}}),command={version:1 as const,contractId:fixture.contractId,targetId:'g1' as const,generation:status.generation,operationId:randomUUID(),issuedAt:now,payload};
+  assert.equal((await request(port,'/pilot/canary',command,'a'.repeat(88))).status,403);
+  const result=await request(port,'/pilot/canary',command,signFinite('canary-payment',command,parseCanaryCapability,fixture.operator));assert.equal(result.status,200);assert.doesNotMatch(JSON.stringify(result.body),new RegExp(blob));
+  await until(()=>request(port,'/pilot/canary'),r=>r.status===200&&(r.body as {progress?:{state:string;dispatchClaimed:boolean}}).progress?.state==='waiting-for-quorum');
+  const installed=await request(port,'/pilot/canary');assert.doesNotMatch(JSON.stringify(installed.body),new RegExp(blob));assert.equal((installed.body as {progress:{dispatchClaimed:boolean}}).progress.dispatchClaimed,false);
+}
+async function replaceConfiguration(role:string,port:number,status:Status){
+  const before=(await request(port,'/pilot/configuration')).body as {revision:number;configHash:string};
+  const keyPath=role==='w1'?'/warthog/.warthog/pilot/setup/reporter.key':'/pilotdata/setup/reporter.key',key=await readFile(keyPath,'utf8');
+  const update:ConfigUpdate={version:1,contractId:fixture.contractId,targetId:role,generation:status.generation,operationId:randomUUID(),issuedAt:Date.now(),revision:before.revision+1,previousHash:before.configHash,config:parseConfig({...configuration,backends:configuration.backends.map(b=>b.id==='w2'?{...b,url:'https://127.0.0.1:33001'}:b)})};
+  assert.equal((await request(port,'/pilot/configuration',update,signConfigUpdate(update,fixture.operator))).status,200);
+  await until(async()=>((await request(port,'/pilot/status')).body as Status),value=>value.observations.configuration.revision===1&&value.observations.reporterRunning&&value.observations.applicationRunning);
+  assert.equal(await readFile(keyPath,'utf8'),key);assert.equal(((await request(port,'/pilot/setup')).body as {installed:boolean}).installed,true);
+}
+
+test('worker runtime uses mapped ports, persists data across restart and starts its protected reporter',{timeout:45000},async t=>{
+  let current=launch('worker');t.after(async()=>{await stop(current.child);});
+  try{
+    const status=await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.applicationRunning);
+    assert.equal(status.observations.role,'w1');assert.ok(status.observations.resources.memoryLimitBytes);
+    await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
+    const tlsHead=await request(9444,'/chain/head');assert.equal(tlsHead.status,200);assert.equal((tlsHead.body as {code:number}).code,0);
+    for(let i=0;i<6;i++){assert.equal((await request(9444,'/chain/head')).status,200);assert.equal((await request(9444,'/peers/connected/connection')).status,200);}
+    assert.equal((await request(9444,'/settings')).status,404);
+    await install('w1',9444,status);
+    await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.reporterRunning);
+    assert.match(current.logs(),/P2P endpoint is 0\.0\.0\.0:9186\./);assert.match(current.logs(),/P2P advertised port is 30212\./);assert.match(current.logs(),/RPC endpoint is 127\.0\.0\.1:3000\./);
+    const marker=(await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim();
+    const beforeStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(beforeStatus.observations.resources.volumeId,marker);assert.equal(beforeStatus.observations.resources.starts,1);assert.equal(beforeStatus.observations.resources.quotaBytesVerified,false);
+    await replaceConfiguration('w1',9444,status);assert.equal(((await request(9444,'/pilot/status')).body as Status).observations.resources.starts,1);
+    await pause('w1',9444,status);await assert.rejects(request(3001,'/chain/head',undefined,undefined,150,false));
+    await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
+    await stop(current.child);current=launch('worker');
+    await until(async()=>((await request(9444,'/pilot/status')).body as Status),value=>value.observations.applicationRunning&&value.observations.reporterRunning);
+    await until(()=>request(3001,'/chain/head',undefined,undefined,1000,false),value=>value.status===200);
+    assert.equal((await readFile('/warthog/.warthog/.evernode-volume-id','utf8')).trim(),marker);assert.match(current.logs(),/restored=1 starts=2/);assert.match(current.logs(),/mode=network/);
+    const afterStatus=(await request(9444,'/pilot/status')).body as Status;assert.equal(afterStatus.observations.resources.volumeId,marker);assert.equal(afterStatus.observations.resources.starts,2);
+    assert.equal(afterStatus.observations.configuration.revision,1);
+  }catch(error){console.error(current.logs().split('\n').filter(line=>!/private.?key|secret|password|ed[0-9a-f]{128}/i.test(line)).join('\n'));throw error;}
+});
+test('gateway runtime reloads only verified setup and pauses its whole proxy process group',{timeout:45000},async t=>{
+  const current=launch('gateway');t.after(async()=>{await stop(current.child);});
+  try{
+    const status=await until(async()=>((await request(9445,'/pilot/status')).body as Status),value=>value.observations.applicationRunning);
+    await until(()=>request(8443,'/status'),value=>value.status===200);
+    assert.equal((await request(8443,'/pilot/control')).status,403);
+    await install('g1',9445,status);
+    await until(async()=>((await request(9445,'/pilot/status')).body as Status),value=>value.observations.applicationRunning&&value.observations.reporterRunning);
+    assert.equal((await request(9445,'/pilot/dashboard')).status,404);
+    await installClosedCanary(9445,status);
+    assert.equal((await request(8443,'/pilot/canary')).status,403);
+    await until(()=>request(8443,'/chain/head'),value=>value.status===503);
+    assert.equal((await request(8443,'/settings')).status,403);
+    assert.equal((await request(8443,'/pilot/configuration')).status,403);
+    await replaceConfiguration('g1',9445,status);await until(()=>request(8443,'/chain/head'),value=>value.status===503);
+    await pause('g1',9445,status);await assert.rejects(request(8443,'/status',undefined,undefined,150));
+    await until(()=>request(8443,'/status'),value=>value.status===200);
+  }catch(error){console.error(current.logs().split('\n').filter(line=>!/private.?key|secret|password|ed[0-9a-f]{128}/i.test(line)).join('\n'));throw error;}
+});

@@ -1,0 +1,20 @@
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY shared ./shared
+COPY controller ./controller
+COPY gateway ./gateway
+COPY client ./client
+COPY reporter ./reporter
+COPY fault ./fault
+COPY runtime ./runtime
+COPY tests ./tests
+COPY tsconfig.json ./
+COPY deploy/patch-hotpocket.cjs deploy/pilot-identity.json deploy/fault-operator.json ./deploy/
+COPY deploy/evrpanel.ts deploy/restart-journal.ts deploy/controller-bundle.ts deploy/bootstrap-client.ts deploy/upload-journal.ts deploy/controller-owner.json ./deploy/
+COPY deploy/canary-policy.ts deploy/canary-executor.ts deploy/canary-journal.ts deploy/operation-poller.ts deploy/discover-controller.ts deploy/retirement.ts deploy/canary-ledger.ts deploy/canary-host.ts deploy/canary-rpc.ts deploy/canary-presigned.ts ./deploy/
+RUN node deploy/patch-hotpocket.cjs
+RUN --network=none npm run check
+RUN --network=none npm test
+RUN --network=none npm run build:controller

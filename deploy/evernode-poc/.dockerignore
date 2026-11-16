@@ -1,0 +1,7 @@
+node_modules
+evidence
+.local
+*.log
+.env*
+*.dpapi
+dist

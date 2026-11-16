@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  },
+  "include": ["shared/**/*.ts", "gateway/**/*.ts", "controller/**/*.ts", "client/**/*.ts", "reporter/**/*.ts", "fault/**/*.ts", "runtime/**/*.ts", "deploy/**/*.ts", "tests/**/*.ts"]
+}

@@ -1,0 +1,11 @@
+{
+  "checkpoint": {
+    "height": 5000000,
+    "hash": "848a75bd1776562075c8c86dc2ddfe9eb1f62a1a53be9a31430fcdbaae675557"
+  },
+  "minimumHeight": 5000000,
+  "maxLag": 3,
+  "minPeers": 2,
+  "maxLatencyMs": 3000,
+  "freshnessMs": 30000
+}

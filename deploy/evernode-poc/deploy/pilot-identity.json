@@ -1,0 +1,25 @@
+{
+  "contractId": "ebbe2fc9-8c2b-4837-b43c-8289a6dd201c",
+  "reporters": [
+    {
+      "id": "w1",
+      "publicKey": "ed1204ab2788ed75d863cc6d545af8ef3926931c7440b93b98d89b9524d3ff8976"
+    },
+    {
+      "id": "w2",
+      "publicKey": "ede698a79c4b52772593177d92237cbbc66d5ec29811bf58bf5836e24b73aeed03"
+    },
+    {
+      "id": "w3",
+      "publicKey": "ed415941366182c6ed4ff366425e64b7662613d480274fe3ec3229f360af7d46ab"
+    },
+    {
+      "id": "g1",
+      "publicKey": "ed478cbb66a954181064bca516b5f679366c472d6538abd3af4736944d75130b99"
+    },
+    {
+      "id": "g2",
+      "publicKey": "ed60ed9baddacd73db3d12148badd85cfd336bd907dbb097ce58e5c1a7e413761e"
+    }
+  ]
+}

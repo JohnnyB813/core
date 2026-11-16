@@ -1,0 +1,5 @@
+node_modules/
+.local/
+evidence/*.jsonl
+evidence/*-latest.json
+*.log
