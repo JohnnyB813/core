@@ -20,12 +20,14 @@ export function parseConfig(value:unknown):GatewayConfig {
   if(Number(p.maxLag)>10||Number(p.minPeers)<2||Number(p.maxLatencyMs)>3000||Number(p.freshnessMs)>30000)throw new Error('Policy exceeds pilot bounds');
   return{contractId:c.contractId,controllers:c.controllers as string[],controllerEndpoints,backends,reference:endpoint(c.reference).origin,policy:{checkpoint:{height:checkpoint.height,hash:checkpoint.hash},minimumHeight:p.minimumHeight,maxLag:Number(p.maxLag),minPeers:Number(p.minPeers),maxLatencyMs:Number(p.maxLatencyMs),freshnessMs:Number(p.freshnessMs)}};
 }
-export function haproxyConfig(config:GatewayConfig,pemFiles:string[]=[]):string {
+export function haproxyConfig(config:GatewayConfig,pemFiles:string[]=[],readProxyPorts?:number[]):string {
   if(pemFiles.some(file=>!/^\/run\/poc\/(host|instance)-tls\.pem$/.test(file)))throw new Error('Unexpected TLS staging path');
+  if(readProxyPorts&&(readProxyPorts.length!==config.backends.length||new Set(readProxyPorts).size!==readProxyPorts.length||readProxyPorts.some(port=>!Number.isInteger(port)||port<1||port>65535)))throw new Error('Invalid fixed read-proxy ports');
   const servers=config.backends.map((backend,i)=>{
     const url=endpoint(backend.url);
-    const tls=url.protocol==='https:'?' ssl verify required ca-file /etc/ssl/cert.pem sni str('+url.hostname+')':'';
-    return '  server '+backend.id+' '+url.hostname+':'+(url.port||(url.protocol==='https:'?'443':'80'))+tls+' check addr 127.0.0.1 port '+(9101+i)+' inter 1s fall 1 rise 1 init-state fully-down';
+    const normalized=readProxyPorts?.[i],tls=!normalized&&url.protocol==='https:'?' ssl verify required ca-file /etc/ssl/cert.pem sni str('+url.hostname+')':'';
+    const address=normalized?'127.0.0.1:'+normalized:url.hostname+':'+(url.port||(url.protocol==='https:'?'443':'80'));
+    return '  server '+backend.id+' '+address+tls+' check addr 127.0.0.1 port '+(9101+i)+' inter 1s fall 1 rise 1 init-state fully-down';
   });
   return `global
   log stdout format raw local0
@@ -62,7 +64,7 @@ backend local_status
 backend workers
   balance leastconn
   option redispatch 1
-  retry-on conn-failure empty-response response-timeout
+  retry-on conn-failure empty-response response-timeout 502 503
   option httpchk GET /ready
   http-check expect status 200
   http-reuse never

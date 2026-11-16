@@ -9,6 +9,7 @@ import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {parseConfig,haproxyConfig} from '../gateway/config.ts';
 import {fixture,head,hash} from './helpers.ts';
+import {startReadProxy,READ_PROXY_PORT} from '../gateway/read-proxy.ts';
 const policy={checkpoint:{height:5000000,hash},minimumHeight:5000000,maxLag:3,minPeers:2,maxLatencyMs:3000,freshnessMs:30000};
 async function close(server:Server){server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 async function stop(child:ChildProcess){if(child.exitCode!==null||child.signalCode!==null)return;child.kill('SIGTERM');await once(child,'exit');}
@@ -73,4 +74,15 @@ test('published compatibility defaults start with no workers and closed admissio
   assert.equal(status.workers.length,0);assert.equal(status.workerReady,false);assert.equal(status.controllerQuorum,false);
   assert.equal((await fetch('http://127.0.0.1:8080/chain/head')).status,503);
   await stop(child);assert.equal(child.exitCode,0);
+});
+test('real HAProxy serves valid chunked worker data through bounded normalization',{timeout:15000},async t=>{
+  let mode='normal',calls=0;
+  const worker=await fixture((req,res)=>{calls++;const body=JSON.stringify(mode==='large'?{code:0,data:{padding:'x'.repeat(262145)}}:req.url?.endsWith('/hash')?{code:0,data:{hash}}:head);res.writeHead(200,{'content-type':'application/json'});res.write(body.slice(0,12));res.end(body.slice(12));});t.after(worker.close);
+  const config=parseConfig({contractId:'normalized-fixture',controllers:['c1','c2','c3','c4','c5'],backends:[{id:'w1',url:worker.url}],reference:worker.url,policy}),normalized=await startReadProxy(config.backends[0],policy,READ_PROXY_PORT);t.after(()=>close(normalized));
+  const ready=createServer((_q,r)=>{r.writeHead(200);r.end();});await new Promise<void>(resolve=>ready.listen(9101,'127.0.0.1',resolve));t.after(()=>close(ready));
+  await writeFile('/run/poc/normalized.cfg',haproxyConfig(config,[],[READ_PROXY_PORT]));const valid=spawnSync('/usr/sbin/haproxy',['-c','-f','/run/poc/normalized.cfg'],{encoding:'utf8'});assert.equal(valid.status,0,valid.stderr);
+  const proxy=spawn('/usr/sbin/haproxy',['-db','-f','/run/poc/normalized.cfg'],{stdio:'ignore'});t.after(()=>stop(proxy));
+  const get=(path='/chain/head')=>fetch('http://127.0.0.1:8080'+path,{signal:AbortSignal.timeout(5000)});await eventually(()=>get().then(r=>r.status),s=>s===200);
+  for(const path of ['/chain/head','/chain/block/5000000/hash']){const r=await get(path),text=await r.text();assert.equal(r.status,200);assert.equal(r.headers.get('x-poc-backend'),'w1');assert.equal(r.headers.get('transfer-encoding'),null);assert.equal(Number(r.headers.get('content-length')),Buffer.byteLength(text));assert.equal(JSON.parse(text).code,0);}
+  mode='large';const before=calls;assert.equal((await get()).status,502);assert(calls-before<=2,'More than one retry of an oversized response');
 });

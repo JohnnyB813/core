@@ -63,8 +63,8 @@ export class EvrPanelClient {
     await this.observe();
     const body=object(await this.#request('/api/',{address:this.#target.account,type:'docker_logs',instance:this.#target.slot}));
     const data=Array.isArray(body.data)?body.data.filter(line=>typeof line==='string').join('\n'):typeof body.data==='string'?body.data:'';
-    const lines=data.split('\n').filter(line=>!/private.?key|password|secret|authorization|cookie|bearer|ed[0-9a-f]{128}/i.test(line)&&/\[evr\] data_dir=|Chain info:|RPC endpoint|RPC public endpoint|P2P endpoint|P2P advertised port|Warthog Node|"event":"gateway-tls-bootstrap"|"event":"gateway-start"/.test(line)).slice(-100);
-    const startupTimes=lines.filter(line=>/\[evr\] data_dir=|"event":"gateway-tls-bootstrap"/.test(line)).map(line=>Date.parse(line.split(' | ',1)[0])).filter(Number.isFinite);
+    const lines=data.split('\n').filter(line=>!/private.?key|password|secret|authorization|cookie|bearer|ed[0-9a-f]{128}/i.test(line)&&/\[evr\] data_dir=|Chain info:|RPC endpoint|RPC public endpoint|P2P endpoint|P2P advertised port|Warthog Node|"event":"gateway-tls-bootstrap"|"event":"gateway-start"|"event":"pilot-runtime-start"/.test(line)).slice(-100);
+    const startupTimes=lines.filter(line=>/\[evr\] data_dir=|"event":"gateway-tls-bootstrap"|"event":"pilot-runtime-start"/.test(line)).map(line=>Date.parse(line.split(' | ',1)[0])).filter(Number.isFinite);
     return{checkedAt:this.#now(),lines,startupTimes};
   }
   async prepareRestart(journal:RestartJournal,operationId:string):Promise<RestartPlan>{
@@ -92,6 +92,9 @@ export class EvrPanelClient {
     if(plan.targetHash!==targetHash(this.#target))throw new Error('Restart verification target differs');
     const previous=await journal.latest(operationId);
     if(!previous?.requestedAt)throw new Error('No restart submission was recorded');
+    // Verified history remains valid after the host rotates its bounded logs.
+    // Current application health is checked separately from this receipt.
+    if(previous.state==='verified')return previous;
     const diagnostics=await this.diagnostics();
     const newStartupAt=diagnostics.startupTimes.find(time=>time>previous.requestedAt!);
     const receipt:RestartReceipt={operationId,state:newStartupAt?'verified':'uncertain',at:this.#now(),requestedAt:previous.requestedAt,...(newStartupAt?{newStartupAt}:{})};

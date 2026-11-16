@@ -79,6 +79,17 @@ test('a later startup verifies an acknowledged restart without another mutation'
   await f.client.prepareRestart(journal,'restart-fixture-1');await f.client.restartOnce(journal,'restart-fixture-1');
   assert.equal((await f.client.verifyRestart(journal,'restart-fixture-1')).state,'verified');assert.equal(f.restarts(),1);
 });
+test('a pilot supervisor startup verifies restart when the compatibility TLS bootstrap event is absent',async()=>{
+  const logs=[now-1000,now+1000].map(at=>new Date(at).toISOString()+' | {"event":"pilot-runtime-start","role":"g1","mode":"gateway","uid":1000}').join('\n');
+  const f=fixture({logs}),journal=new Journal();await f.client.prepareRestart(journal,'restart-pilot-fixture-1');await f.client.restartOnce(journal,'restart-pilot-fixture-1');
+  const receipt=await f.client.verifyRestart(journal,'restart-pilot-fixture-1');assert.equal(receipt.state,'verified');assert.equal(receipt.newStartupAt,now+1000);assert.equal(f.restarts(),1);
+});
+test('a verified restart does not regress when the host rotates its startup logs',async()=>{
+  const options={logs:new Date(now+1000).toISOString()+' | {"event":"pilot-runtime-start","role":"g1"}'},f=fixture(options),journal=new Journal();
+  await f.client.prepareRestart(journal,'restart-rotated-logs-1');await f.client.restartOnce(journal,'restart-rotated-logs-1');
+  const verified=await f.client.verifyRestart(journal,'restart-rotated-logs-1');assert.equal(verified.state,'verified');options.logs='';
+  assert.deepEqual(await f.client.verifyRestart(journal,'restart-rotated-logs-1'),verified);assert.equal(f.restarts(),1);
+});
 test('a filesystem claim survives reopening the journal and corrupt receipts fail closed',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'poc-host-journal-'));
   try{

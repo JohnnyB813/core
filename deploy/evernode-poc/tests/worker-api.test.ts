@@ -15,8 +15,8 @@ test('worker read adapter forwards to fixed loopback only and never forwards hea
   const adapter=workerApi(Number(new URL(upstream.url).port));
   const front=await fixture((req,res)=>{void adapter(req,res).then(handled=>{if(!handled){res.writeHead(404);res.end();}});});
   try{
-    const response=await fetch(front.url+'/chain/head',{headers:{authorization:'Bearer ignored'}});assert.equal(response.status,200);assert.deepEqual(await response.json(),head);assert.equal(response.headers.get('cache-control'),'no-store');
-    assert.equal((await fetch(front.url+'/chain/block/1/hash')).status,200);
+    const response=await fetch(front.url+'/chain/head',{headers:{authorization:'Bearer ignored'}});assert.equal(response.status,200);assert.deepEqual(await response.json(),head);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('transfer-encoding'),null);assert.equal(Number(response.headers.get('content-length')),Buffer.byteLength(JSON.stringify(head)));
+    const block=await fetch(front.url+'/chain/block/1/hash');assert.equal(block.status,200);assert.equal(block.headers.get('transfer-encoding'),null);assert.equal(Number(block.headers.get('content-length')),Buffer.byteLength(await block.text()));
     assert.equal((await fetch(front.url+'/wallet')).status,404);
     assert.equal((await fetch(front.url+'/chain/head?target=http://other')).status,404);
     assert.equal((await fetch(front.url+'/chain/head',{method:'POST',body:'{}'})).status,404);

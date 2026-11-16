@@ -152,6 +152,17 @@ payloads, signed capabilities and private keys. G1 exposes only safe canary stat
 on `/pilot/canary`. The public Warthog gateway continues to exclude these paths.
 These services still require live installation and full acceptance evidence.
 
+## Worker response framing
+
+Gateway runtimes normalize each fixed worker through a private loopback read
+adapter. The adapter keeps certificate verification for remote HTTPS, permits
+only the three chain read routes, forwards no caller credentials, and buffers
+at most 256 KiB within a 1.5-second deadline. It validates the response and emits
+an explicit byte length. This supports existing workers that use chunked HTTP
+without relaxing the outer HAProxy framing or size checks. New worker images
+also emit explicit lengths. A real HAProxy regression fixture covers a valid
+chunked worker response and rejects an oversized one.
+
 ## Primary interface references
 
 - https://docs.evernode.org/en/latest/sdk/hotpocket/tutorials/contract-context.html

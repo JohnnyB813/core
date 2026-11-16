@@ -13,7 +13,8 @@ export function workerApi(port:number){
   return async(req:IncomingMessage,res:ServerResponse):Promise<boolean>=>{
     if(req.method!=='GET'||!workerReadPath(req.url||''))return false;
     res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');
-    if(active>=16){res.writeHead(503);res.end('{"error":"worker-busy"}');return true;}
+    const send=(status:number,encoded:string)=>{res.setHeader('content-length',Buffer.byteLength(encoded));res.writeHead(status);res.end(encoded);};
+    if(active>=16){send(503,'{"error":"worker-busy"}');return true;}
     active++;
     try{
       const body=await boundedJson('http://127.0.0.1:'+port+req.url,1500);
@@ -23,8 +24,8 @@ export function workerApi(port:number){
       else{const value=object(body);if(value.code!==0||!value.data||typeof value.data!=='object'||Array.isArray(value.data))throw new Error('Invalid header response');}
       const encoded=JSON.stringify(body);
       if(Buffer.byteLength(encoded)>262144)throw new Error('Worker response too large');
-      res.writeHead(200);res.end(encoded);
-    }catch{res.writeHead(502);res.end('{"error":"filtered-worker-unavailable"}');}
+      send(200,encoded);
+    }catch{send(502,'{"error":"filtered-worker-unavailable"}');}
     finally{active--;}
     return true;
   };
